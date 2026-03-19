@@ -74,19 +74,33 @@ function initAuth() {
         document.getElementById('auth-title').innerText = isLoginMode ? '로그인' : '회원가입';
         document.getElementById('auth-submit-btn').innerText = isLoginMode ? '로그인' : '가입하기';
         e.target.innerText = isLoginMode ? '가입하기' : '로그인으로 돌아가기';
+
+        const nameInput = document.getElementById('auth-name');
+        nameInput.style.display = isLoginMode ? 'none' : 'block';
+        if (!isLoginMode) nameInput.setAttribute('required', 'true');
+        else nameInput.removeAttribute('required');
     });
 
     authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = document.getElementById('auth-email').value;
         const password = document.getElementById('auth-password').value;
+        const fullName = document.getElementById('auth-name').value;
 
         if (isLoginMode) {
-            const { error } = await db.auth.signInWithPassword({ email, password });
+            const { data: signInData, error } = await db.auth.signInWithPassword({ email, password });
             if (error) alert("로그인 에러: " + error.message);
-            else { alert('로그인 성공!'); authModal.classList.remove('show'); }
+            else {
+                const userName = signInData.user?.user_metadata?.full_name || email.split('@')[0];
+                alert(`${userName}님 반갑습니다! 🐬`);
+                authModal.classList.remove('show');
+            }
         } else {
-            const { error } = await db.auth.signUp({ email, password });
+            const { error } = await db.auth.signUp({
+                email,
+                password,
+                options: { data: { full_name: fullName } }
+            });
             if (error) alert("회원가입 에러: " + error.message);
             else { alert('회원가입 신청 완료! 입력하신 이메일에서 승인 후 로그인 가능합니다'); authModal.classList.remove('show'); }
         }
@@ -98,7 +112,8 @@ function updateAuthUI() {
     const adminElements = document.querySelectorAll('.admin-only');
 
     if (currentUser) {
-        btn.innerText = '로그아웃 (' + currentUser.email + ')';
+        const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+        btn.innerText = userName + '님 반갑습니다! (로그아웃)';
         adminElements.forEach(el => el.style.display = 'inline-block');
     } else {
         btn.innerText = '로그인 / 회원가입';
@@ -243,11 +258,12 @@ scheduleForm.addEventListener('submit', async (e) => {
         const { error: updateError } = await db.from('schedules').update(newData).eq('id', id);
         if (updateError) { alert('수정 실패: ' + updateError.message); return; }
 
+        const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
         await db.from('schedule_histories').insert([{
             schedule_id: id,
             old_data: oldScheduleData,
             new_data: newData,
-            changed_by_email: currentUser.email
+            changed_by_email: userName
         }]);
     } else {
         const { error: insertError } = await db.from('schedules').insert([newData]);

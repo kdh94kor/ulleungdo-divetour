@@ -113,7 +113,7 @@ async function fetchSchedules() {
     if (!db) return;
     const { data: schedules, error } = await db
         .from('schedules')
-        .select('*')
+        .select('*, schedule_histories(id)')
         .order('schedule_date', { ascending: true })
         .order('schedule_time', { ascending: true });
 
@@ -148,8 +148,15 @@ async function fetchSchedules() {
             const escapedTitle = schedule.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const escapedContent = schedule.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
+            let historyBtn = '';
+            // 만약 schedule_histories 가 배열로 존재하고 1개 이상이라면 (수정된 이력이 있다면)
+            if (schedule.schedule_histories && schedule.schedule_histories.length > 0) {
+                historyBtn = `<button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:rgba(255, 193, 7, 0.2); border:1px solid #ffc107; color:#ffc107;" onclick="viewHistory('${schedule.id}')">🕒이력보기</button>`;
+            }
+
             adminHTML = `
                 <div class="action-buttons admin-only" style="margin-top: 5px;">
+                    ${historyBtn}
                     <button class="btn sm" onclick="openScheduleModal('${schedule.id}', '${schedule.schedule_date}', '${schedule.schedule_time.slice(0, 5)}', '${escapedTitle}', '${escapedContent}')">수정</button>
                     <button class="btn sm" onclick="deleteSchedule('${schedule.id}')">삭제</button>
                 </div>
@@ -257,6 +264,50 @@ window.deleteSchedule = async (id) => {
         if (error) { alert("삭제 실패: " + error.message); return; }
         fetchSchedules();
     }
+};
+
+/* ============================
+   HISTORY VIEWER LOGIC
+============================ */
+const historyModal = document.getElementById('history-modal');
+document.getElementById('close-history-modal').addEventListener('click', () => {
+    historyModal.classList.remove('show');
+});
+
+window.viewHistory = async (scheduleId) => {
+    const { data: histories, error } = await db
+        .from('schedule_histories')
+        .select('*')
+        .eq('schedule_id', scheduleId)
+        .order('changed_at', { ascending: false });
+
+    if (error) {
+        alert('이력을 불러오는 중 오류가 발생했습니다: ' + error.message);
+        return;
+    }
+
+    const container = document.getElementById('history-container');
+    container.innerHTML = '';
+
+    if (!histories || histories.length === 0) {
+        container.innerHTML = '<p style="color:white; text-align:center;">수정 이력이 없습니다.</p>';
+    } else {
+        histories.forEach(h => {
+            const dateStr = new Date(h.changed_at).toLocaleString('ko-KR');
+            // Safely parse old and new objects mapped from history
+            const formatData = (data) => data ? `[${data.time || data.schedule_time}] ${data.title} - ${data.content}` : '없음';
+
+            container.innerHTML += `
+                <div class="history-item">
+                    <p><strong>수정 전:</strong> ${formatData(h.old_data)}</p>
+                    <p><strong>수정 후:</strong> ${formatData(h.new_data)}</p>
+                    <p class="meta">작성자: ${h.changed_by_email} | 시간: ${dateStr}</p>
+                </div>
+            `;
+        });
+    }
+
+    historyModal.classList.add('show');
 };
 
 /* ============================

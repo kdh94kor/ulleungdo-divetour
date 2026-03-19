@@ -88,7 +88,7 @@ function initAuth() {
         } else {
             const { error } = await db.auth.signUp({ email, password });
             if (error) alert("회원가입 에러: " + error.message);
-            else { alert('회원가입/로그인 완료!'); authModal.classList.remove('show'); }
+            else { alert('회원가입 신청 완료! 입력하신 이메일에서 승인 후 로그인 가능합니다'); authModal.classList.remove('show'); }
         }
     });
 }

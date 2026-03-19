@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>울릉도 프리다이빙 안내 🌊 (Admin Mode)</title>
+    <title>울릉도 가보자고 🌊</title>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 
@@ -56,8 +56,8 @@
     </nav>
 
     <header class="hero-section">
-        <h1>Ulleungdo Freediving Trip</h1>
-        <p>우리들의 울릉도 프리다이빙 여행 정보표</p>
+        <h1>와 울릉도!</h1>
+        <p>와 독도!</p>
     </header>
 
     <main class="content-grid">
@@ -80,8 +80,13 @@
         <section class="glass-card" id="accommodation-section">
             <div class="card-header">
                 <h2><span class="icon">🏠</span> 숙소 정보</h2>
-                <button id="add-accommodation-btn" class="btn primary-btn admin-only" style="display:none;">+ 숙소
-                    추가</button>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <button class="btn sm admin-only" onclick="openAccommodationHistoryModal()"
+                        style="display:none; background: transparent; border: 1px dashed rgba(255,255,255,0.4);"
+                        title="숙소 변경이력 보기">🕒 이력조회</button>
+                    <button id="add-accommodation-btn" class="btn primary-btn admin-only" style="display:none;">+ 숙소
+                        추가</button>
+                </div>
             </div>
             <div class="card-content">
                 <div class="accommodation-info" id="accommodation-container">
@@ -113,7 +118,13 @@
         <section class="glass-card" id="transportation-section">
             <div class="card-header">
                 <h2><span class="icon">🚢</span> 이동 방법</h2>
-                <button id="add-transport-btn" class="btn primary-btn admin-only" style="display:none;">+ 이동 추가</button>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <button class="btn sm admin-only" onclick="openTransportHistoryModal()"
+                        style="display:none; background: transparent; border: 1px dashed rgba(255,255,255,0.4);"
+                        title="이동방법 변경이력 보기">🕒 이력조회</button>
+                    <button id="add-transport-btn" class="btn primary-btn admin-only" style="display:none;">+ 이동
+                        추가</button>
+                </div>
             </div>
             <div class="card-content">
                 <div class="transport-info" id="transport-container">

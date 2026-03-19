@@ -461,6 +461,12 @@ body {
     display: flex;
 }
 
+/* glass-card 의 fadeInUp 애니메이션이 modal 안에서 다시 실행되면
+   zoomIn 과 충돌하여 모달이 두 번 뜨는 것처럼 보이는 버그 수정 */
+.modal .glass-card {
+    animation: none;
+}
+
 .modal-content {
     position: relative;
     width: 90%;

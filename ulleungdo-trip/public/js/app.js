@@ -219,11 +219,13 @@ async function fetchSchedules() {
             `;
         }
 
+        const authorText = schedule.created_by_name ? `<span style="font-size:0.75rem; color:#aaa; font-weight:normal; margin-left:0.5rem;">(등록: ${schedule.created_by_name})</span>` : '';
+
         li.innerHTML = `
             ${headerHTML}
             <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; margin-top: 0.5rem; border-left: 3px solid #00bcd4;">
                 <p style="color: #fff; font-weight:bold; margin-bottom: 0.3rem;">
-                    [${schedule.schedule_time.slice(0, 5)}] ${schedule.title}
+                    [${schedule.schedule_time.slice(0, 5)}] ${schedule.title} ${authorText}
                 </p>
                 <p style="color: #e3f2fd; font-size: 0.9rem; margin-bottom: 0; white-space: pre-wrap; line-height: 1.4;">${schedule.content}</p>
                 ${adminHTML}
@@ -296,12 +298,12 @@ scheduleForm.addEventListener('submit', async (e) => {
         content: document.getElementById('form-content').value
     };
 
+    const meta = currentUser.user_metadata || {};
+    const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
+
     if (id) {
         const { error: updateError } = await db.from('schedules').update(newData).eq('id', id);
         if (updateError) { alert('수정 실패: ' + updateError.message); return; }
-
-        const meta = currentUser.user_metadata || {};
-        const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
 
         await db.from('schedule_histories').insert([{
             schedule_id: id,
@@ -310,6 +312,8 @@ scheduleForm.addEventListener('submit', async (e) => {
             changed_by_email: userName
         }]);
     } else {
+        newData.created_by_email = currentUser.email;
+        newData.created_by_name = userName;
         const { error: insertError } = await db.from('schedules').insert([newData]);
         if (insertError) { alert('등록 실패: ' + insertError.message); return; }
     }
@@ -559,17 +563,22 @@ async function fetchTransport() {
             const escapedCat = item.category.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const escapedTitle = item.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const escapedDesc = (item.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\r?\n/g, '\\n');
+            const escapedOldData = encodeURIComponent(JSON.stringify({
+                category: item.category, title: item.title, description: item.description
+            }));
 
             adminHTML = `
                 <div class="action-buttons admin-only" style="margin-top:0.25rem;">
                     <button class="btn sm" onclick="openTransportModal('${item.id}', '${escapedCat}', '${escapedTitle}', '${escapedDesc}')">수정</button>
-                    <button class="btn sm" onclick="deleteTransport('${item.id}')">삭제</button>
+                    <button class="btn sm" onclick="deleteTransport('${item.id}', '${escapedOldData}')">삭제</button>
                 </div>
             `;
         }
 
+        const authorText = item.created_by_name ? `<span style="font-size:0.75rem; color:#aaa; font-weight:normal; margin-left:0.5rem;">(등록: ${item.created_by_name})</span>` : '';
+
         div.innerHTML = `
-            <p style="margin-bottom:0.2rem;"><strong style="font-size:1.1rem; color:#fff;">${item.title}</strong></p>
+            <p style="margin-bottom:0.2rem;"><strong style="font-size:1.1rem; color:#fff;">${item.title}</strong> ${authorText}</p>
             <p style="white-space: pre-wrap; font-size:0.95rem; line-height:1.4; color:#e3f2fd; margin-bottom:0.5rem; margin-top:0;">${item.description}</p>
             ${adminHTML}
         `;
@@ -589,12 +598,19 @@ window.openTransportModal = (id = null, cat = '', title = '', desc = '') => {
     document.getElementById('form-transport-category').value = cat;
     document.getElementById('form-transport-title').value = title;
     document.getElementById('form-transport-description').value = desc;
+
+    if (id) {
+        document.getElementById('form-transport-title').dataset.oldData = JSON.stringify({ category: cat, title, description: desc });
+    }
     transportModal.classList.add('show');
 };
 
 transportForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('form-transport-id').value;
+    const meta = currentUser.user_metadata || {};
+    const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
+
     const data = {
         category: document.getElementById('form-transport-category').value,
         title: document.getElementById('form-transport-title').value,
@@ -602,21 +618,88 @@ transportForm.addEventListener('submit', async (e) => {
     };
 
     if (id) {
+        const oldDataRaw = document.getElementById('form-transport-title').dataset.oldData;
+        const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : {};
+
         const { error } = await db.from('transportation_items').update(data).eq('id', id);
         if (error) alert('수정 실패: ' + error.message);
+        else {
+            await db.from('transportation_histories').insert([{
+                transportation_id: id,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                old_data: oldData,
+                new_data: data,
+                action: 'UPDATE'
+            }]);
+        }
     } else {
-        const { error } = await db.from('transportation_items').insert([data]);
+        data.created_by_email = currentUser.email;
+        data.created_by_name = userName;
+        const { data: inserted, error } = await db.from('transportation_items').insert([data]).select();
+
         if (error) alert('등록 실패: ' + error.message);
+        else if (inserted && inserted.length > 0) {
+            await db.from('transportation_histories').insert([{
+                transportation_id: inserted[0].id,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                new_data: inserted[0],
+                action: 'INSERT'
+            }]);
+        }
     }
     transportModal.classList.remove('show');
     fetchTransport();
 });
 
-window.deleteTransport = async (id) => {
+window.deleteTransport = async (id, oldDataRaw) => {
     if (confirm('삭제하시겠습니까?')) {
+        const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
+        const oldData = oldDataRaw ? JSON.parse(decodeURIComponent(oldDataRaw)) : {};
+
+        await db.from('transportation_histories').insert([{
+            transportation_id: id,
+            modified_by_email: currentUser.email,
+            modified_by_name: userName,
+            old_data: oldData,
+            action: 'DELETE'
+        }]);
+
         await db.from('transportation_items').delete().eq('id', id);
         fetchTransport();
     }
+};
+
+window.openTransportHistoryModal = async () => {
+    if (!db) return;
+    const { data: histories, error } = await db.from('transportation_histories').select('*').order('created_at', { ascending: false }).limit(30);
+
+    const container = document.getElementById('history-container');
+    container.innerHTML = '';
+
+    if (error || !histories || histories.length === 0) {
+        container.innerHTML = `<p style="color:white; text-align:center;">기록이 없습니다.</p>`;
+    } else {
+        histories.forEach(h => {
+            const timeStr = new Date(h.created_at).toLocaleString('ko-KR');
+            let actionText = '';
+            if (h.action === 'INSERT') {
+                actionText = `<span style="color:#64dd17;">[추가]</span> ${h.new_data?.title}`;
+            } else if (h.action === 'UPDATE') {
+                actionText = `<span style="color:#ffb300;">[수정]</span> ${h.old_data?.title} -> ${h.new_data?.title}`;
+            } else if (h.action === 'DELETE') {
+                actionText = `<span style="color:#ff1744;">[삭제]</span> ${h.old_data?.title}`;
+            }
+            container.innerHTML += `
+                <div class="history-item">
+                    <p style="margin-bottom:0.3rem;">${actionText}</p>
+                    <p class="meta" style="margin-top:0.2rem;">✍️ <b>${h.modified_by_name}</b> <span style="font-size:0.75rem;">(${timeStr})</span></p>
+                </div>
+            `;
+        });
+    }
+    document.getElementById('history-modal').classList.add('show');
 };
 
 /* ============================
@@ -652,11 +735,14 @@ async function fetchAccommodations() {
         if (currentUser) {
             const escapedUrl = (item.url || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const escapedDesc = (item.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\r?\n/g, '\\n');
+            const escapedOldData = encodeURIComponent(JSON.stringify({
+                name: item.name, url: item.url, address: item.address, description: item.description
+            }));
 
             adminHTML = `
                 <div class="action-buttons admin-only" style="margin-top:0.5rem;">
                     <button class="btn sm" onclick="openAccommodationModal('${item.id}', '${escapedName}', '${escapedUrl}', '${escapedAddr}', '${escapedDesc}')">수정</button>
-                    <button class="btn sm" onclick="deleteAccommodation('${item.id}')">삭제</button>
+                    <button class="btn sm" onclick="deleteAccommodation('${item.id}', '${escapedOldData}')">삭제</button>
                 </div>
             `;
         }
@@ -667,10 +753,12 @@ async function fetchAccommodations() {
         let copyHTML = '';
         if (item.address) copyHTML = `<button class="btn sm" style="margin-left:0.5rem; padding:0.1rem 0.4rem; font-size:0.75rem; background:rgba(0,188,212,0.2); border:1px solid #00bcd4; color:#00bcd4;" onclick="copyAddress('${escapedAddr}')">복사</button>`;
 
+        const authorText = item.created_by_name ? `<span style="font-size:0.8rem; color:#aaa; font-weight:normal; margin-left:1rem;">(등록: ${item.created_by_name})</span>` : '';
+
         div.innerHTML = `
             <div style="background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: 8px; border-left: 3px solid #f48fb1;">
                 <h3 style="margin-top:0; margin-bottom:0.2rem; color:#fff; display:flex; align-items:center;">
-                    ${item.name} ${urlHTML}
+                    ${item.name} ${urlHTML} ${authorText}
                 </h3>
                 <p style="font-size:0.85rem; color:#b0bec5; margin-top:0; margin-bottom:0.5rem; display:flex; align-items:center;">
                     <span style="flex-shrink:0;">📍&nbsp;</span><span style="word-break:keep-all;">${item.address}</span> ${copyHTML}
@@ -696,12 +784,19 @@ window.openAccommodationModal = (id = null, name = '', url = '', address = '', d
     document.getElementById('form-accommodation-url').value = url;
     document.getElementById('form-accommodation-address').value = address;
     document.getElementById('form-accommodation-description').value = desc;
+
+    if (id) {
+        document.getElementById('form-accommodation-name').dataset.oldData = JSON.stringify({ name, url, address, description: desc });
+    }
     accommodationModal.classList.add('show');
 };
 
 accommodationForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('form-accommodation-id').value;
+    const meta = currentUser.user_metadata || {};
+    const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
+
     const data = {
         name: document.getElementById('form-accommodation-name').value,
         url: document.getElementById('form-accommodation-url').value,
@@ -710,21 +805,88 @@ accommodationForm.addEventListener('submit', async (e) => {
     };
 
     if (id) {
+        const oldDataRaw = document.getElementById('form-accommodation-name').dataset.oldData;
+        const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : {};
+
         const { error } = await db.from('accommodations').update(data).eq('id', id);
         if (error) alert('수정 실패: ' + error.message);
+        else {
+            await db.from('accommodation_histories').insert([{
+                accommodation_id: id,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                old_data: oldData,
+                new_data: data,
+                action: 'UPDATE'
+            }]);
+        }
     } else {
-        const { error } = await db.from('accommodations').insert([data]);
+        data.created_by_email = currentUser.email;
+        data.created_by_name = userName;
+        const { data: inserted, error } = await db.from('accommodations').insert([data]).select();
+
         if (error) alert('등록 실패: ' + error.message);
+        else if (inserted && inserted.length > 0) {
+            await db.from('accommodation_histories').insert([{
+                accommodation_id: inserted[0].id,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                new_data: inserted[0],
+                action: 'INSERT'
+            }]);
+        }
     }
     accommodationModal.classList.remove('show');
     fetchAccommodations();
 });
 
-window.deleteAccommodation = async (id) => {
+window.deleteAccommodation = async (id, oldDataRaw) => {
     if (confirm('이 숙소를 삭제하시겠습니까?')) {
+        const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
+        const oldData = oldDataRaw ? JSON.parse(decodeURIComponent(oldDataRaw)) : {};
+
+        await db.from('accommodation_histories').insert([{
+            accommodation_id: id,
+            modified_by_email: currentUser.email,
+            modified_by_name: userName,
+            old_data: oldData,
+            action: 'DELETE'
+        }]);
+
         await db.from('accommodations').delete().eq('id', id);
         fetchAccommodations();
     }
+};
+
+window.openAccommodationHistoryModal = async () => {
+    if (!db) return;
+    const { data: histories, error } = await db.from('accommodation_histories').select('*').order('created_at', { ascending: false }).limit(30);
+
+    const container = document.getElementById('history-container');
+    container.innerHTML = '';
+
+    if (error || !histories || histories.length === 0) {
+        container.innerHTML = `<p style="color:white; text-align:center;">기록이 없습니다.</p>`;
+    } else {
+        histories.forEach(h => {
+            const timeStr = new Date(h.created_at).toLocaleString('ko-KR');
+            let actionText = '';
+            if (h.action === 'INSERT') {
+                actionText = `<span style="color:#64dd17;">[추가]</span> ${h.new_data?.name}`;
+            } else if (h.action === 'UPDATE') {
+                actionText = `<span style="color:#ffb300;">[수정]</span> ${h.old_data?.name} -> ${h.new_data?.name}`;
+            } else if (h.action === 'DELETE') {
+                actionText = `<span style="color:#ff1744;">[삭제]</span> ${h.old_data?.name}`;
+            }
+            container.innerHTML += `
+                <div class="history-item">
+                    <p style="margin-bottom:0.3rem;">${actionText}</p>
+                    <p class="meta" style="margin-top:0.2rem;">✍️ <b>${h.modified_by_name}</b> <span style="font-size:0.75rem;">(${timeStr})</span></p>
+                </div>
+            `;
+        });
+    }
+    document.getElementById('history-modal').classList.add('show');
 };
 
 window.showToast = (message) => {

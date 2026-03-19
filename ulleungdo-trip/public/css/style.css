@@ -126,6 +126,96 @@ body {
 }
 
 /* =====================
+   TOC Sidebar
+   ===================== */
+.toc-toggle {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 900;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: #fff;
+    font-size: 1.5rem;
+    padding: 0.5rem 0.8rem;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.toc-toggle:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.toc-sidebar {
+    position: fixed;
+    top: 0;
+    left: -300px;
+    width: 250px;
+    height: 100vh;
+    background: rgba(10, 25, 47, 0.95);
+    backdrop-filter: blur(15px);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 1000;
+    transition: left 0.3s ease;
+    padding: 2rem 1.5rem;
+    box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
+}
+
+.toc-sidebar.open {
+    left: 0;
+}
+
+.toc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 1rem;
+}
+
+.toc-header h3 {
+    color: var(--accent-color);
+    margin: 0;
+    font-size: 1.4rem;
+}
+
+.close-toc-btn {
+    font-size: 1.8rem;
+    color: #fff;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.toc-list {
+    list-style: none;
+    padding: 0;
+}
+
+.toc-list li {
+    margin-bottom: 1.5rem;
+}
+
+.toc-list a {
+    color: var(--text-light);
+    text-decoration: none;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    transition: color 0.2s, transform 0.2s;
+}
+
+.toc-list a:hover {
+    color: #fff;
+    transform: translateX(5px);
+}
+
+/* =====================
    Auth Navbar
    ===================== */
 .auth-nav {

@@ -40,6 +40,38 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /* ============================
+   TOC SIDEBAR LOGIC
+============================ */
+const tocSidebar = document.getElementById('toc-sidebar');
+const tocToggleBtn = document.getElementById('toc-toggle-btn');
+const closeTocBtn = document.getElementById('close-toc-btn');
+const tocLinks = document.querySelectorAll('.toc-list a');
+
+tocToggleBtn.addEventListener('click', () => {
+    tocSidebar.classList.add('open');
+});
+
+closeTocBtn.addEventListener('click', () => {
+    tocSidebar.classList.remove('open');
+});
+
+// Close TOC when clicking a link and smoothly scroll
+tocLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = link.getAttribute('href').substring(1);
+        const targetElem = document.getElementById(targetId);
+        if (targetElem) {
+            window.scrollTo({
+                top: targetElem.offsetTop - 80, // Offset for navbar and aesthetics
+                behavior: 'smooth'
+            });
+        }
+        tocSidebar.classList.remove('open');
+    });
+});
+
+/* ============================
    AUTH LOGIC
 ============================ */
 const authModal = document.getElementById('auth-modal');
@@ -165,7 +197,7 @@ async function fetchSchedules() {
         let adminHTML = '';
         if (currentUser) {
             const escapedTitle = schedule.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            const escapedContent = schedule.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedContent = schedule.content.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\r?\n/g, '\\n');
 
             let historyBtn = '';
             // 만약 schedule_histories 가 배열로 존재하고 1개 이상이라면 (수정된 이력이 있다면)
@@ -188,7 +220,7 @@ async function fetchSchedules() {
                 <p style="color: #fff; font-weight:bold; margin-bottom: 0.3rem;">
                     [${schedule.schedule_time.slice(0, 5)}] ${schedule.title}
                 </p>
-                <p style="color: #e3f2fd; font-size: 0.9rem; margin-bottom: 0;">${schedule.content}</p>
+                <p style="color: #e3f2fd; font-size: 0.9rem; margin-bottom: 0; white-space: pre-wrap; line-height: 1.4;">${schedule.content}</p>
                 ${adminHTML}
             </div>
         `;
@@ -464,7 +496,7 @@ async function fetchTransport() {
         if (currentUser) {
             const escapedCat = item.category.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const escapedTitle = item.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            const escapedDesc = item.description.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedDesc = (item.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\r?\n/g, '\\n');
 
             adminHTML = `
                 <div class="action-buttons admin-only" style="margin-top:0.25rem;">
@@ -475,7 +507,8 @@ async function fetchTransport() {
         }
 
         div.innerHTML = `
-            <p><strong>${item.title}:</strong> ${item.description}</p>
+            <p style="margin-bottom:0.2rem;"><strong style="font-size:1.1rem; color:#fff;">${item.title}</strong></p>
+            <p style="white-space: pre-wrap; font-size:0.95rem; line-height:1.4; color:#e3f2fd; margin-bottom:0.5rem; margin-top:0;">${item.description}</p>
             ${adminHTML}
         `;
         container.appendChild(div);
@@ -556,7 +589,7 @@ async function fetchAccommodations() {
         let adminHTML = '';
         if (currentUser) {
             const escapedUrl = (item.url || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            const escapedDesc = (item.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedDesc = (item.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\r?\n/g, '\\n');
 
             adminHTML = `
                 <div class="action-buttons admin-only" style="margin-top:0.5rem;">
@@ -580,7 +613,7 @@ async function fetchAccommodations() {
                 <p style="font-size:0.85rem; color:#b0bec5; margin-top:0; margin-bottom:0.5rem; display:flex; align-items:center;">
                     <span style="flex-shrink:0;">📍&nbsp;</span><span style="word-break:keep-all;">${item.address}</span> ${copyHTML}
                 </p>
-                <p style="color:#e3f2fd; font-size:0.95rem; margin-bottom: 0; line-height: 1.4;">${item.description}</p>
+                <p style="color:#e3f2fd; font-size:0.95rem; margin-bottom: 0; line-height: 1.4; white-space: pre-wrap;">${item.description}</p>
                 ${adminHTML}
             </div>
         `;

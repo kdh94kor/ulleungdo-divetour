@@ -57,7 +57,21 @@
             </div>
         </section>
 
-        <!-- Section 2: Packing List -->
+        <!-- Section 2: Accommodation -->
+        <section class="glass-card" id="accommodation-section">
+            <div class="card-header">
+                <h2><span class="icon">🏠</span> 숙소 정보</h2>
+                <button id="add-accommodation-btn" class="btn primary-btn admin-only" style="display:none;">+ 숙소
+                    추가</button>
+            </div>
+            <div class="card-content">
+                <div class="accommodation-info" id="accommodation-container">
+                    <p style="color:white;">로딩 중...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Packing List -->
         <section class="glass-card" id="packing-section">
             <div class="card-header">
                 <h2><span class="icon">🎒</span> 챙겨야 할 것</h2>
@@ -148,6 +162,32 @@
         </div>
     </div>
 
+    <!-- Accommodation Form Modal -->
+    <div id="accommodation-form-modal" class="modal">
+        <div class="modal-content glass-card">
+            <span class="close-btn" id="close-accommodation-modal">&times;</span>
+            <h2 id="accommodation-modal-title">숙소 추가</h2>
+            <form id="accommodation-form">
+                <input type="hidden" id="form-accommodation-id">
+
+                <label style="color:#e3f2fd; font-size:0.9rem;" for="form-accommodation-name">숙소명</label>
+                <input type="text" id="form-accommodation-name" placeholder="예: 울릉 리조트" required>
+
+                <label style="color:#e3f2fd; font-size:0.9rem;" for="form-accommodation-url">웹사이트 주소 (URL)</label>
+                <input type="url" id="form-accommodation-url" placeholder="예: https://example.com" autocomplete="off">
+
+                <label style="color:#e3f2fd; font-size:0.9rem;" for="form-accommodation-address">주소 (네비게이션용 검색
+                    주소)</label>
+                <input type="text" id="form-accommodation-address" placeholder="예: 경북 울릉군 울릉읍 어쩌구" required>
+
+                <label style="color:#e3f2fd; font-size:0.9rem;" for="form-accommodation-description">상세 설명</label>
+                <textarea id="form-accommodation-description" rows="3" placeholder="예: 301호 오션뷰 숙소" required></textarea>
+
+                <button type="submit" class="btn primary-btn" style="margin-top:1rem;">저장하기</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Packing Form Modal -->
     <div id="packing-form-modal" class="modal">
         <div class="modal-content glass-card">
@@ -183,6 +223,9 @@
             </form>
         </div>
     </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
 
     <script src="js/app.js"></script>
 </body>

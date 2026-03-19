@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         initAuth();
         fetchSchedules();
+        fetchAccommodations();
         fetchPacking();
         fetchTransport();
 
@@ -55,6 +56,7 @@ function initAuth() {
         currentUser = session?.user;
         updateAuthUI();
         fetchSchedules();
+        fetchAccommodations();
         fetchPacking();
         fetchTransport();
     });
@@ -91,7 +93,8 @@ function initAuth() {
             const { data: signInData, error } = await db.auth.signInWithPassword({ email, password });
             if (error) alert("로그인 에러: " + error.message);
             else {
-                const userName = signInData.user?.user_metadata?.full_name || email.split('@')[0];
+                const meta = signInData.user?.user_metadata || {};
+                const userName = meta.display_name || meta.full_name || meta.name || email.split('@')[0];
                 alert(`${userName}님 반갑습니다! 🐬`);
                 authModal.classList.remove('show');
             }
@@ -99,7 +102,7 @@ function initAuth() {
             const { error } = await db.auth.signUp({
                 email,
                 password,
-                options: { data: { full_name: fullName } }
+                options: { data: { display_name: fullName, full_name: fullName, name: fullName } }
             });
             if (error) alert("회원가입 에러: " + error.message);
             else { alert('회원가입 신청 완료! 입력하신 이메일에서 승인 후 로그인 가능합니다'); authModal.classList.remove('show'); }
@@ -112,7 +115,8 @@ function updateAuthUI() {
     const adminElements = document.querySelectorAll('.admin-only');
 
     if (currentUser) {
-        const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+        const meta = currentUser.user_metadata || {};
+        const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
         btn.innerText = userName + '님 반갑습니다! (로그아웃)';
         adminElements.forEach(el => el.style.display = 'inline-block');
     } else {
@@ -258,7 +262,9 @@ scheduleForm.addEventListener('submit', async (e) => {
         const { error: updateError } = await db.from('schedules').update(newData).eq('id', id);
         if (updateError) { alert('수정 실패: ' + updateError.message); return; }
 
-        const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+        const meta = currentUser.user_metadata || {};
+        const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
+
         await db.from('schedule_histories').insert([{
             schedule_id: id,
             old_data: oldScheduleData,
@@ -516,4 +522,129 @@ window.deleteTransport = async (id) => {
         await db.from('transportation_items').delete().eq('id', id);
         fetchTransport();
     }
+};
+
+/* ============================
+   CMS LOGIC: ACCOMMODATION
+============================ */
+async function fetchAccommodations() {
+    if (!db) return;
+    const { data: items, error } = await db.from('accommodations').select('*').order('created_at', { ascending: true });
+
+    if (error) {
+        if (error.code === '42P01') {
+            document.getElementById('accommodation-container').innerHTML = `<p style="color:#ffb74d">테이블이 없습니다! schema_v5.sql 실행 요망</p>`;
+        }
+        return;
+    }
+
+    const container = document.getElementById('accommodation-container');
+    container.innerHTML = '';
+
+    if (!items || items.length === 0) {
+        container.innerHTML = `<p style="color:white;">등록된 숙소가 없습니다.</p>`;
+        return;
+    }
+
+    items.forEach(item => {
+        const div = document.createElement('div');
+        div.style.marginBottom = '1rem';
+
+        const escapedName = item.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const escapedAddr = (item.address || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+        let adminHTML = '';
+        if (currentUser) {
+            const escapedUrl = (item.url || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedDesc = (item.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+            adminHTML = `
+                <div class="action-buttons admin-only" style="margin-top:0.5rem;">
+                    <button class="btn sm" onclick="openAccommodationModal('${item.id}', '${escapedName}', '${escapedUrl}', '${escapedAddr}', '${escapedDesc}')">수정</button>
+                    <button class="btn sm" onclick="deleteAccommodation('${item.id}')">삭제</button>
+                </div>
+            `;
+        }
+
+        let urlHTML = '';
+        if (item.url) urlHTML = `<a href="${item.url}" target="_blank" title="숙소 홈페이지 이동" style="text-decoration:none; margin-left:0.5rem; font-size:1.2rem;">🏠</a>`;
+
+        let copyHTML = '';
+        if (item.address) copyHTML = `<button class="btn sm" style="margin-left:0.5rem; padding:0.1rem 0.4rem; font-size:0.75rem; background:rgba(0,188,212,0.2); border:1px solid #00bcd4; color:#00bcd4;" onclick="copyAddress('${escapedAddr}')">복사</button>`;
+
+        div.innerHTML = `
+            <div style="background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: 8px; border-left: 3px solid #f48fb1;">
+                <h3 style="margin-top:0; margin-bottom:0.2rem; color:#fff; display:flex; align-items:center;">
+                    ${item.name} ${urlHTML}
+                </h3>
+                <p style="font-size:0.85rem; color:#b0bec5; margin-top:0; margin-bottom:0.5rem; display:flex; align-items:center;">
+                    <span style="flex-shrink:0;">📍&nbsp;</span><span style="word-break:keep-all;">${item.address}</span> ${copyHTML}
+                </p>
+                <p style="color:#e3f2fd; font-size:0.95rem; margin-bottom: 0; line-height: 1.4;">${item.description}</p>
+                ${adminHTML}
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+const accommodationModal = document.getElementById('accommodation-form-modal');
+const accommodationForm = document.getElementById('accommodation-form');
+
+document.getElementById('add-accommodation-btn').addEventListener('click', () => { openAccommodationModal(); });
+document.getElementById('close-accommodation-modal').addEventListener('click', () => { accommodationModal.classList.remove('show'); });
+
+window.openAccommodationModal = (id = null, name = '', url = '', address = '', desc = '') => {
+    document.getElementById('accommodation-modal-title').innerText = id ? '숙소 수정' : '숙소 추가';
+    document.getElementById('form-accommodation-id').value = id || '';
+    document.getElementById('form-accommodation-name').value = name;
+    document.getElementById('form-accommodation-url').value = url;
+    document.getElementById('form-accommodation-address').value = address;
+    document.getElementById('form-accommodation-description').value = desc;
+    accommodationModal.classList.add('show');
+};
+
+accommodationForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('form-accommodation-id').value;
+    const data = {
+        name: document.getElementById('form-accommodation-name').value,
+        url: document.getElementById('form-accommodation-url').value,
+        address: document.getElementById('form-accommodation-address').value,
+        description: document.getElementById('form-accommodation-description').value
+    };
+
+    if (id) {
+        const { error } = await db.from('accommodations').update(data).eq('id', id);
+        if (error) alert('수정 실패: ' + error.message);
+    } else {
+        const { error } = await db.from('accommodations').insert([data]);
+        if (error) alert('등록 실패: ' + error.message);
+    }
+    accommodationModal.classList.remove('show');
+    fetchAccommodations();
+});
+
+window.deleteAccommodation = async (id) => {
+    if (confirm('이 숙소를 삭제하시겠습니까?')) {
+        await db.from('accommodations').delete().eq('id', id);
+        fetchAccommodations();
+    }
+};
+
+window.showToast = (message) => {
+    const toast = document.getElementById('toast');
+    toast.innerText = message;
+    toast.classList.add('show');
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 2500);
+};
+
+window.copyAddress = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('복사되었습니다!');
+    }).catch(err => {
+        showToast('복사 실패');
+    });
 };

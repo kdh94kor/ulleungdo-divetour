@@ -94,7 +94,13 @@
         <section class="glass-card" id="packing-section">
             <div class="card-header">
                 <h2><span class="icon">🎒</span> 챙겨야 할 것</h2>
-                <button id="add-packing-btn" class="btn primary-btn admin-only" style="display:none;">+ 물품 추가</button>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <button class="btn sm admin-only" onclick="openPackingHistoryModal()"
+                        style="display:none; background: transparent; border: 1px dashed rgba(255,255,255,0.4);"
+                        title="물품 변경이력 보기">🕒 이력조회</button>
+                    <button id="add-packing-btn" class="btn primary-btn admin-only" style="display:none;">+ 물품
+                        추가</button>
+                </div>
             </div>
             <div class="card-content">
                 <div class="checklist" id="packing-container">

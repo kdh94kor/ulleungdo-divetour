@@ -392,79 +392,135 @@ async function fetchPacking() {
         return;
     }
 
-    // Sync localStorage Checkboxes cleanly
     items.forEach(item => {
         const div = document.createElement('div');
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.justifyContent = 'space-between';
-        div.style.marginBottom = '1rem';
+        div.style.background = 'rgba(0,0,0,0.2)';
+        div.style.padding = '1rem';
+        div.style.borderRadius = '8px';
+        div.style.marginBottom = '0.5rem';
+        div.style.borderLeft = '3px solid #ffca28';
 
-        const isChecked = localStorage.getItem(`packing-${item.id}`) === 'true';
-
-        div.innerHTML = `
-            <label class="check-item" style="margin-bottom:0;">
-                <input type="checkbox" id="cb-${item.id}" ${isChecked ? 'checked' : ''}>
-                <span class="checkmark"></span>
-                <span>${item.item_name}</span>
-            </label>
-        `;
-
+        let adminHTML = '';
         if (currentUser) {
             const escapedName = item.item_name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            div.innerHTML += `
-                <div class="action-buttons admin-only">
+            adminHTML = `
+                <div class="action-buttons admin-only" style="margin-top: 0.5rem;">
                     <button class="btn sm" onclick="openPackingModal('${item.id}', '${escapedName}')">수정</button>
-                    <button class="btn sm" onclick="deletePacking('${item.id}')">삭제</button>
+                    <button class="btn sm" onclick="deletePacking('${item.id}', '${escapedName}')">삭제</button>
                 </div>
             `;
         }
 
-        container.appendChild(div);
+        const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(등록: ${item.created_by_name})</span>` : '';
 
-        // Bind Checkbox localstorage state
-        const cb = document.getElementById(`cb-${item.id}`);
-        cb.addEventListener('change', () => {
-            localStorage.setItem(`packing-${item.id}`, cb.checked);
-        });
+        div.innerHTML = `
+            <p style="margin:0; color:#fff; font-size:1.05rem;">✔ ${item.item_name} ${authorText}</p>
+            ${adminHTML}
+        `;
+        container.appendChild(div);
     });
 }
 
 const packingModal = document.getElementById('packing-form-modal');
 const packingForm = document.getElementById('packing-form');
 
-document.getElementById('add-packing-btn').addEventListener('click', () => { openPackingModal(); });
-document.getElementById('close-packing-modal').addEventListener('click', () => { packingModal.classList.remove('show'); });
-
 window.openPackingModal = (id = null, name = '') => {
-    document.getElementById('packing-modal-title').innerText = id ? '물품 수정' : '물품 추가';
     document.getElementById('form-packing-id').value = id || '';
-    document.getElementById('form-packing-name').value = name;
+    const inputField = document.getElementById('form-packing-name');
+    inputField.value = name;
+    inputField.dataset.oldName = name; // save old name explicitly directly
+    document.getElementById('packing-modal-title').innerText = id ? '준비물 수정' : '준비물 추가';
     packingModal.classList.add('show');
 };
+
+document.getElementById('add-packing-btn').addEventListener('click', () => { openPackingModal(); });
+document.getElementById('close-packing-modal').addEventListener('click', () => { packingModal.classList.remove('show'); });
 
 packingForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('form-packing-id').value;
-    const item_name = document.getElementById('form-packing-name').value;
+    const newName = document.getElementById('form-packing-name').value;
+    const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
 
     if (id) {
-        const { error } = await db.from('packing_items').update({ item_name }).eq('id', id);
-        if (error) alert('수정 실패: ' + error.message);
+        const oldName = document.getElementById('form-packing-name').dataset.oldName || '';
+
+        await db.from('packing_items').update({ item_name: newName }).eq('id', id);
+        await db.from('packing_histories').insert([{
+            packing_item_id: id,
+            modified_by_email: currentUser.email,
+            modified_by_name: userName,
+            old_data: { item_name: oldName },
+            new_data: { item_name: newName },
+            action: 'UPDATE'
+        }]);
     } else {
-        const { error } = await db.from('packing_items').insert([{ item_name }]);
-        if (error) alert('등록 실패: ' + error.message);
+        const { data: inserted } = await db.from('packing_items').insert([{
+            item_name: newName,
+            created_by_email: currentUser.email,
+            created_by_name: userName
+        }]).select();
+
+        if (inserted && inserted.length > 0) {
+            await db.from('packing_histories').insert([{
+                packing_item_id: inserted[0].id,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                new_data: inserted[0],
+                action: 'INSERT'
+            }]);
+        }
     }
     packingModal.classList.remove('show');
     fetchPacking();
 });
 
-window.deletePacking = async (id) => {
-    if (confirm('이 준비물을 삭제하시겠습니까?')) {
+window.deletePacking = async (id, oldName) => {
+    if (confirm('이 물품을 삭제하시겠습니까?')) {
+        const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
+
+        await db.from('packing_histories').insert([{
+            packing_item_id: id,
+            modified_by_email: currentUser.email,
+            modified_by_name: userName,
+            old_data: { item_name: oldName },
+            action: 'DELETE'
+        }]);
+
         await db.from('packing_items').delete().eq('id', id);
-        localStorage.removeItem(`packing-${id}`); // cleanup local state
         fetchPacking();
     }
+};
+
+window.openPackingHistoryModal = async () => {
+    if (!db) return;
+    const { data: histories, error } = await db.from('packing_histories').select('*').order('created_at', { ascending: false }).limit(30);
+
+    const container = document.getElementById('history-container');
+    container.innerHTML = '';
+
+    if (error || !histories || histories.length === 0) {
+        container.innerHTML = `<p style="color:white; text-align:center;">기록이 없습니다.</p>`;
+    } else {
+        histories.forEach(h => {
+            const timeStr = new Date(h.created_at).toLocaleString('ko-KR');
+            let actionText = '';
+            if (h.action === 'INSERT') {
+                actionText = `<span style="color:#64dd17;">[추가]</span> ${h.new_data?.item_name}`;
+            } else if (h.action === 'UPDATE') {
+                actionText = `<span style="color:#ffb300;">[수정]</span> ${h.old_data?.item_name} -> ${h.new_data?.item_name}`;
+            } else if (h.action === 'DELETE') {
+                actionText = `<span style="color:#ff1744;">[삭제]</span> ${h.old_data?.item_name}`;
+            }
+            container.innerHTML += `
+                <div class="history-item">
+                    <p style="margin-bottom:0.3rem;">${actionText}</p>
+                    <p class="meta" style="margin-top:0.2rem;">✍️ <b>${h.modified_by_name}</b> <span style="font-size:0.75rem;">(${timeStr})</span></p>
+                </div>
+            `;
+        });
+    }
+    document.getElementById('history-modal').classList.add('show');
 };
 
 /* ============================

@@ -1,5 +1,7 @@
 let db;
 let currentUser = null;
+let datePicker = null;
+let timePicker = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -14,7 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchTransport();
 
         // 달력 컨트롤 (Flatpickr) 초기화
-        flatpickr("#date-wrapper", {
+        datePicker = flatpickr("#date-wrapper", {
             wrap: true,
             allowInput: true,
             locale: "ko",
@@ -23,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         // 24시간제 시간 컨트롤 (Flatpickr) 초기화
-        flatpickr("#time-wrapper", {
+        timePicker = flatpickr("#time-wrapper", {
             wrap: true,
             allowInput: true,
             enableTime: true,
@@ -190,7 +192,10 @@ async function fetchSchedules() {
 
         let headerHTML = '';
         if (schedule.schedule_date !== currentDate) {
-            headerHTML = `<strong>🌟 ${schedule.schedule_date}</strong>`;
+            const dateObj = new Date(schedule.schedule_date);
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const dayStr = days[dateObj.getDay()];
+            headerHTML = `<strong style="display:block; margin-top:1rem; margin-bottom:0.5rem; font-size:1.15rem; color:#fff;">🌟 ${schedule.schedule_date} (${dayStr}요일)</strong>`;
             currentDate = schedule.schedule_date;
         }
 
@@ -263,11 +268,12 @@ window.openScheduleModal = (id = null, date = '', time = '', title = '', content
     document.getElementById('schedule-modal-title').innerText = id ? '일정 수정' : '일정 추가';
     document.getElementById('form-schedule-id').value = id || '';
 
-    // Set values into elements so flatpickr wrapper catches them perfectly
-    const dateInput = document.getElementById('form-date');
-    dateInput.value = date;
-    const timeInput = document.getElementById('form-time');
-    timeInput.value = time;
+    // Set values into elements safely via flatpickr
+    if (datePicker && date) datePicker.setDate(date);
+    else document.getElementById('form-date').value = date;
+
+    if (timePicker && time) timePicker.setDate(time);
+    else document.getElementById('form-time').value = time;
 
     document.getElementById('form-title').value = title;
     document.getElementById('form-content').value = content;

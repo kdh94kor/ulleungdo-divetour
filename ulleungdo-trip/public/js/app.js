@@ -398,6 +398,14 @@ async function fetchPacking() {
         return;
     }
 
+    let userChecks = new Set();
+    if (currentUser) {
+        const { data: checks } = await db.from('packing_checks').select('packing_item_id').eq('profile_id', currentUser.id);
+        if (checks) {
+            checks.forEach(c => userChecks.add(c.packing_item_id));
+        }
+    }
+
     const container = document.getElementById('packing-container');
     container.innerHTML = '';
 
@@ -425,10 +433,19 @@ async function fetchPacking() {
             `;
         }
 
+        const escapedNameForCheck = item.item_name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(등록: ${item.created_by_name})</span>` : '';
 
+        const isChecked = userChecks.has(item.id);
+        const checkedAttr = isChecked ? 'checked' : '';
+        const textClass = isChecked ? 'packed-text' : '';
+        const disabledAttr = currentUser ? '' : 'disabled="true"';
+
         div.innerHTML = `
-            <p style="margin:0; color:#fff; font-size:1.05rem;">✔ ${item.item_name} ${authorText}</p>
+            <div style="display:flex; align-items:flex-start; gap:0.5rem; color:#fff; font-size:1.05rem;">
+                <input type="checkbox" id="pack-${item.id}" ${checkedAttr} ${disabledAttr} onchange="togglePacking('${item.id}', this.checked, '${escapedNameForCheck}')" style="width:18px; height:18px; accent-color:#ffca28; cursor:${currentUser ? 'pointer' : 'not-allowed'}; margin-top:0.25rem;">
+                <label for="pack-${item.id}" class="${textClass}" id="label-pack-${item.id}" style="cursor:pointer; margin:0; word-break:break-all; flex:1;">${item.item_name} ${authorText}</label>
+            </div>
             ${adminHTML}
         `;
         container.appendChild(div);
@@ -489,6 +506,32 @@ packingForm.addEventListener('submit', async (e) => {
     fetchPacking();
 });
 
+window.togglePacking = async (id, isChecked, itemName) => {
+    if (!currentUser) {
+        alert("로그인이 필요합니다.");
+        const checkboxElem = document.getElementById(`pack-${id}`);
+        if (checkboxElem) checkboxElem.checked = !isChecked; // revert
+        return;
+    }
+
+    const label = document.getElementById(`label-pack-${id}`);
+    if (label) {
+        if (isChecked) label.classList.add('packed-text');
+        else label.classList.remove('packed-text');
+    }
+
+    if (isChecked) {
+        await db.from('packing_checks').upsert({
+            packing_item_id: id,
+            profile_id: currentUser.id
+        });
+    } else {
+        await db.from('packing_checks').delete()
+            .eq('packing_item_id', id)
+            .eq('profile_id', currentUser.id);
+    }
+};
+
 window.deletePacking = async (id, oldName) => {
     if (confirm('이 물품을 삭제하시겠습니까?')) {
         const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
@@ -525,6 +568,10 @@ window.openPackingHistoryModal = async () => {
                 actionText = `<span style="color:#ffb300;">[수정]</span> ${h.old_data?.item_name} -> ${h.new_data?.item_name}`;
             } else if (h.action === 'DELETE') {
                 actionText = `<span style="color:#ff1744;">[삭제]</span> ${h.old_data?.item_name}`;
+            } else if (h.action === 'CHECKED') {
+                actionText = `<span style="color:#29b6f6;">[체크]</span> ${h.new_data?.item_name}`;
+            } else if (h.action === 'UNCHECKED') {
+                actionText = `<span style="color:#9e9e9e;">[해제]</span> ${h.new_data?.item_name}`;
             }
             container.innerHTML += `
                 <div class="history-item">
@@ -940,7 +987,9 @@ async function fetchExpenses() {
     listContainer.innerHTML = '';
 
     let totalExpense = 0;
-    expenses.forEach(ex => totalExpense += ex.amount);
+    expenses.forEach(ex => {
+        if (!ex.is_settled) totalExpense += ex.amount;
+    });
 
     const numPeople = profiles.length;
     const perPerson = numPeople > 0 ? Math.floor(totalExpense / numPeople) : 0;
@@ -952,6 +1001,8 @@ async function fetchExpenses() {
     });
 
     expenses.forEach(ex => {
+        if (ex.is_settled) return; // Skip settled expenses entirely for N split
+
         if (ex.payer_id && balances[ex.payer_id]) {
             balances[ex.payer_id].paid += ex.amount;
         } else if (ex.payer_id) {
@@ -1002,8 +1053,9 @@ async function fetchExpenses() {
         div.style.borderLeft = '3px solid #00bcd4';
 
         let adminHTML = '';
-        // Allow ONLY the payer or maybe everyone who's admin to delete? Here, any authenticated user can edit.
-        if (currentUser) {
+        const isOwner = currentUser && (currentUser.email === item.created_by_email || currentUser.id === item.payer_id);
+
+        if (currentUser && isOwner) {
             const escapedTitle = item.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const escapedOldData = encodeURIComponent(JSON.stringify({ title: item.title, amount: item.amount }));
             adminHTML = `
@@ -1015,11 +1067,23 @@ async function fetchExpenses() {
         }
 
         const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(결제: ${item.created_by_name})</span>` : '';
+        const disabledAttr = isOwner ? '' : 'disabled="true"';
+        const checkedAttr = item.is_settled ? 'checked' : '';
+        const textClass = item.is_settled ? 'packed-text' : '';
+        const escapedTitleForCheck = item.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+        let checkboxHTML = '';
+        if (currentUser) {
+            checkboxHTML = `<input type="checkbox" id="expense-chk-${item.id}" ${checkedAttr} ${disabledAttr} onchange="toggleSettlement('${item.id}', this, '${escapedTitleForCheck}')" style="width:18px; height:18px; accent-color:#00e676; cursor:${isOwner ? 'pointer' : 'not-allowed'}; margin-top:0.25rem;">`;
+        }
 
         div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <p style="margin:0; color:#fff; font-size:1.05rem;">💸 ${item.title} ${authorText}</p>
-                <strong style="color:#ffca28; font-size:1.1rem;">${item.amount.toLocaleString()}원</strong>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div style="display:flex; gap:0.5rem; align-items:flex-start;">
+                    ${checkboxHTML}
+                    <p style="margin:0; color:#fff; font-size:1.05rem;" id="label-expense-${item.id}" class="${textClass}">💸 ${item.title} ${authorText}</p>
+                </div>
+                <strong style="color:#ffca28; font-size:1.1rem; flex-shrink:0; margin-left:0.5rem;">${item.amount.toLocaleString()}원</strong>
             </div>
             ${adminHTML}
         `;
@@ -1115,6 +1179,35 @@ window.deleteExpense = async (id, oldDataRaw) => {
     }
 };
 
+window.toggleSettlement = async (id, checkboxElem, title) => {
+    const isChecked = checkboxElem.checked;
+    const msg = isChecked ? '정산완료 처리하시겠습니까?' : '정산완료를 취소하시겠습니까?';
+    if (!confirm(msg)) {
+        checkboxElem.checked = !isChecked; // revert
+        return;
+    }
+
+    const label = document.getElementById(`label-expense-${id}`);
+    if (label) {
+        if (isChecked) label.classList.add('packed-text');
+        else label.classList.remove('packed-text');
+    }
+
+    const { error } = await db.from('expenses').update({ is_settled: isChecked }).eq('id', id);
+    if (!error && currentUser) {
+        const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
+        const actionStr = isChecked ? 'SETTLED' : 'UNSETTLED';
+        await db.from('settlement_histories').insert([{
+            expense_id: id,
+            modified_by_email: currentUser.email,
+            modified_by_name: userName,
+            action: actionStr
+        }]);
+    }
+
+    fetchExpenses();
+};
+
 window.openExpenseHistoryModal = async () => {
     if (!db) return;
     const { data: histories, error } = await db.from('expense_histories').select('*').order('created_at', { ascending: false }).limit(30);
@@ -1134,6 +1227,36 @@ window.openExpenseHistoryModal = async () => {
                 actionText = `<span style="color:#ffb300;">[수정]</span> ${h.old_data?.title} -> ${h.new_data?.title} (${Number(h.new_data?.amount).toLocaleString()}원)`;
             } else if (h.action === 'DELETE') {
                 actionText = `<span style="color:#ff1744;">[삭제]</span> ${h.old_data?.title}`;
+            }
+            container.innerHTML += `
+                <div class="history-item">
+                    <p style="margin-bottom:0.3rem;">${actionText}</p>
+                    <p class="meta" style="margin-top:0.2rem;">✍️ <b>${h.modified_by_name}</b> <span style="font-size:0.75rem;">(${timeStr})</span></p>
+                </div>
+            `;
+        });
+    }
+    document.getElementById('history-modal').classList.add('show');
+};
+
+window.openSettlementHistoryModal = async () => {
+    if (!db) return;
+    const { data: histories, error } = await db.from('settlement_histories').select('*, expenses(title)').order('created_at', { ascending: false }).limit(30);
+
+    const container = document.getElementById('history-container');
+    container.innerHTML = '';
+
+    if (error || !histories || histories.length === 0) {
+        container.innerHTML = `<p style="color:white; text-align:center;">기록이 없습니다.</p>`;
+    } else {
+        histories.forEach(h => {
+            const timeStr = new Date(h.created_at).toLocaleString('ko-KR');
+            let actionText = '';
+            const expenseTitle = h.expenses?.title || '알 수 없는 지출';
+            if (h.action === 'SETTLED') {
+                actionText = `<span style="color:#00e676;">[정산완료 처리]</span> ${expenseTitle}`;
+            } else if (h.action === 'UNSETTLED') {
+                actionText = `<span style="color:#ff4081;">[정산완료 취소]</span> ${expenseTitle}`;
             }
             container.innerHTML += `
                 <div class="history-item">

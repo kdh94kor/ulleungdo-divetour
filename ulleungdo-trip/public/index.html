@@ -142,13 +142,18 @@
         <section class="glass-card" id="expense-section">
             <div class="card-header">
                 <h2><span class="icon">💸</span> 정산 (N빵)</h2>
-                <div style="display:flex; flex-direction:column; gap:0.2rem; align-items:stretch; min-width:90px;">
+                <div style="display:flex; flex-direction:column; gap:0.2rem; align-items:stretch; min-width:95px;">
                     <button id="add-expense-btn" class="btn primary-btn admin-only"
                         style="display:none; padding:0.35rem 0.6rem; font-size:0.9rem; line-height:1.2;">+ 지출
                         추가</button>
-                    <button class="btn admin-only" onclick="openExpenseHistoryModal()"
-                        style="display:none; background: transparent; border: 1px dashed rgba(255,255,255,0.4); padding:0.15rem 0.4rem; font-size:0.7rem; line-height:1.2; color:#ccc;"
-                        title="지출 이력 보기">🕒 이력조회</button>
+                    <div style="display:flex; gap:0.2rem;">
+                        <button class="btn admin-only" onclick="openExpenseHistoryModal()"
+                            style="display:none; flex:1; background: transparent; border: 1px dashed rgba(255,255,255,0.4); padding:0.15rem 0.2rem; font-size:0.65rem; line-height:1.2; color:#ccc;"
+                            title="지출 이력 보기">🕒 지출</button>
+                        <button class="btn admin-only" onclick="openSettlementHistoryModal()"
+                            style="display:none; flex:1; background: transparent; border: 1px dashed rgba(255,255,255,0.4); padding:0.15rem 0.2rem; font-size:0.65rem; line-height:1.2; color:#ccc;"
+                            title="정산완료 이력 보기">🕒 완료</button>
+                    </div>
                 </div>
             </div>
             <div class="card-content">

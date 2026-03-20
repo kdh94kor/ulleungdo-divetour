@@ -265,7 +265,7 @@ body {
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 1rem;
+    padding-bottom: 0.5rem;
     margin-bottom: 1.5rem;
 }
 
@@ -344,7 +344,7 @@ body {
     border: 1px solid var(--glass-border);
     border-radius: 20px;
     box-shadow: var(--glass-shadow);
-    padding: 2rem;
+    padding: 1.25rem 2rem 2rem;
     transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
     animation: fadeInUp 1s ease forwards;
     opacity: 0;

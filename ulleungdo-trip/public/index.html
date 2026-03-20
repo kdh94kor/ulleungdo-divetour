@@ -45,6 +45,7 @@
             <li><a href="#accommodation-section"><span class="icon">🏠</span> 숙소 정보</a></li>
             <li><a href="#packing-section"><span class="icon">🎒</span> 아맞다</a></li>
             <li><a href="#transportation-section"><span class="icon">🚢</span> 이동 방법</a></li>
+            <li><a href="#expense-section"><span class="icon">💸</span> 정산 (N빵)</a></li>
         </ul>
     </aside>
 
@@ -133,6 +134,31 @@
             <div class="card-content">
                 <div class="transport-info" id="transport-container">
                     <p style="color:white;">로딩 중...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: Settlement / Expenses -->
+        <section class="glass-card" id="expense-section">
+            <div class="card-header">
+                <h2><span class="icon">💸</span> 정산 (N빵)</h2>
+                <div style="display:flex; flex-direction:column; gap:0.2rem; align-items:stretch; min-width:90px;">
+                    <button id="add-expense-btn" class="btn primary-btn admin-only"
+                        style="display:none; padding:0.35rem 0.6rem; font-size:0.9rem; line-height:1.2;">+ 지출
+                        추가</button>
+                    <button class="btn admin-only" onclick="openExpenseHistoryModal()"
+                        style="display:none; background: transparent; border: 1px dashed rgba(255,255,255,0.4); padding:0.15rem 0.4rem; font-size:0.7rem; line-height:1.2; color:#ccc;"
+                        title="지출 이력 보기">🕒 이력조회</button>
+                </div>
+            </div>
+            <div class="card-content">
+                <!-- 전체 요약 -->
+                <div id="expense-summary-container"
+                    style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 3px solid #00e676;">
+                    <p style="color:white; text-align:center;">정산 정보 로딩 중...</p>
+                </div>
+                <!-- 지출 내역 리스트 -->
+                <div class="expense-info" id="expense-list-container">
                 </div>
             </div>
         </section>
@@ -258,6 +284,25 @@
 
                 <label style="color:#e3f2fd; font-size:0.9rem;" for="form-transport-description">상세 설명</label>
                 <textarea id="form-transport-description" rows="3" placeholder="예: 카풀 인원 배정 완료" required></textarea>
+
+                <button type="submit" class="btn primary-btn" style="margin-top:1rem;">저장하기</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Expense Form Modal -->
+    <div id="expense-form-modal" class="modal">
+        <div class="modal-content glass-card">
+            <span class="close-btn" id="close-expense-modal">&times;</span>
+            <h2 id="expense-modal-title">지출 추가</h2>
+            <form id="expense-form">
+                <input type="hidden" id="form-expense-id">
+
+                <label style="color:#e3f2fd; font-size:0.9rem;" for="form-expense-title">지출 내용 (어디에 썼나요?)</label>
+                <input type="text" id="form-expense-title" placeholder="예: 보팅비, 마트 장보기" required>
+
+                <label style="color:#e3f2fd; font-size:0.9rem;" for="form-expense-amount">금액 (원)</label>
+                <input type="number" id="form-expense-amount" placeholder="예: 300000" min="0" required>
 
                 <button type="submit" class="btn primary-btn" style="margin-top:1rem;">저장하기</button>
             </form>

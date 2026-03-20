@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchAccommodations();
         fetchPacking();
         fetchTransport();
+        if (typeof fetchExpenses === 'function') fetchExpenses();
 
         // 달력 컨트롤 (Flatpickr) 초기화
         datePicker = flatpickr("#date-wrapper", {
@@ -93,6 +94,7 @@ function initAuth() {
         fetchAccommodations();
         fetchPacking();
         fetchTransport();
+        if (typeof fetchExpenses === 'function') fetchExpenses();
     });
 
     document.getElementById('nav-login-btn').addEventListener('click', () => {
@@ -153,6 +155,14 @@ function updateAuthUI() {
         const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
         btn.innerText = userName + '님 반갑습니다! (로그아웃)';
         adminElements.forEach(el => el.style.display = 'inline-block');
+
+        // Sync profile to public.profiles
+        db.from('profiles').upsert({
+            id: currentUser.id,
+            email: currentUser.email,
+            display_name: userName
+        }).then(({ error }) => { if (error) console.error("Profile sync:", error); });
+
     } else {
         btn.innerText = '로그인 / 회원가입';
         adminElements.forEach(el => el.style.display = 'none');
@@ -904,4 +914,234 @@ window.copyAddress = (text) => {
     }).catch(err => {
         showToast('복사 실패');
     });
+};
+
+/* ============================
+   CMS LOGIC: EXPENSES / SETTLEMENT
+============================ */
+async function fetchExpenses() {
+    if (!db) return;
+
+    // 1. Fetch profiles
+    const { data: profiles, error: pError } = await db.from('profiles').select('*');
+    if (pError) {
+        if (pError.code === '42P01') {
+            document.getElementById('expense-summary-container').innerHTML = `<p style="color:#ffb74d; text-align:center;">정산 테이블이 없습니다! schema_v9.sql 실행 요망</p>`;
+        }
+        return;
+    }
+
+    // 2. Fetch expenses
+    const { data: expenses, error: eError } = await db.from('expenses').select('*').order('created_at', { ascending: true });
+    if (eError) return;
+
+    const listContainer = document.getElementById('expense-list-container');
+    const summaryContainer = document.getElementById('expense-summary-container');
+    listContainer.innerHTML = '';
+
+    let totalExpense = 0;
+    expenses.forEach(ex => totalExpense += ex.amount);
+
+    const numPeople = profiles.length;
+    const perPerson = numPeople > 0 ? Math.floor(totalExpense / numPeople) : 0;
+
+    // Initialize balances
+    const balances = {};
+    profiles.forEach(p => {
+        balances[p.id] = { name: p.display_name || p.email.split('@')[0], paid: 0, delta: 0 };
+    });
+
+    expenses.forEach(ex => {
+        if (ex.payer_id && balances[ex.payer_id]) {
+            balances[ex.payer_id].paid += ex.amount;
+        } else if (ex.payer_id) {
+            balances[ex.payer_id] = { name: ex.created_by_name || '알수없음', paid: ex.amount, delta: 0 };
+        }
+    });
+
+    // Calculate deltas and Render Summary
+    let summaryHTML = `<h3 style="color:#00e676; margin-top:0; margin-bottom:0.5rem; text-align:center; font-size:1.3rem;">총 경비: ${totalExpense.toLocaleString()}원</h3>`;
+    if (numPeople > 0) {
+        summaryHTML += `<p style="text-align:center; color:#e3f2fd; margin-bottom:1rem; font-size:1rem;">참석 인원: ${numPeople}명 | <strong style="color:#ffca28;">1인당: ${perPerson.toLocaleString()}원</strong></p>`;
+        summaryHTML += `<div style="display:flex; flex-direction:column; gap:0.5rem; font-size: 0.95rem;">`;
+
+        Object.values(balances).forEach(b => {
+            b.delta = b.paid - perPerson;
+            let statusHTML = '';
+            if (b.delta > 0) {
+                statusHTML = `<strong style="color:#00e676;">+${b.delta.toLocaleString()}원 받기</strong>`;
+            } else if (b.delta < 0) {
+                statusHTML = `<strong style="color:#ff4081;">${Math.abs(b.delta).toLocaleString()}원 분담하기</strong>`;
+            } else {
+                statusHTML = `<span style="color:#b0bec5;">정산 완료 (0원)</span>`;
+            }
+
+            summaryHTML += `<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.4rem;">
+                <span style="color:#fff;">${b.name} <span style="font-size:0.75rem; color:#aaa; margin-left:0.3rem;">[총 ${b.paid.toLocaleString()}원 지출]</span></span>
+                <span>${statusHTML}</span>
+            </div>`;
+        });
+        summaryHTML += `</div>`;
+    } else {
+        summaryHTML += `<p style="color:#fff; text-align:center;">등록된 로그인 유저 프로필이 없습니다.</p>`;
+    }
+    summaryContainer.innerHTML = summaryHTML;
+
+    // Render expense list
+    if (!expenses || expenses.length === 0) {
+        listContainer.innerHTML = `<p style="color:white; text-align:center;">등록된 지출 내역이 없습니다.</p>`;
+        return;
+    }
+
+    expenses.forEach(item => {
+        const div = document.createElement('div');
+        div.style.background = 'rgba(0,0,0,0.2)';
+        div.style.padding = '1rem';
+        div.style.borderRadius = '8px';
+        div.style.marginBottom = '0.5rem';
+        div.style.borderLeft = '3px solid #00bcd4';
+
+        let adminHTML = '';
+        // Allow ONLY the payer or maybe everyone who's admin to delete? Here, any authenticated user can edit.
+        if (currentUser) {
+            const escapedTitle = item.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedOldData = encodeURIComponent(JSON.stringify({ title: item.title, amount: item.amount }));
+            adminHTML = `
+                <div class="action-buttons admin-only" style="margin-top: 0.5rem;">
+                    <button class="btn sm" onclick="openExpenseModal('${item.id}', '${escapedTitle}', ${item.amount})">수정</button>
+                    <button class="btn sm" onclick="deleteExpense('${item.id}', '${escapedOldData}')">삭제</button>
+                </div>
+            `;
+        }
+
+        const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(결제: ${item.created_by_name})</span>` : '';
+
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <p style="margin:0; color:#fff; font-size:1.05rem;">💸 ${item.title} ${authorText}</p>
+                <strong style="color:#ffca28; font-size:1.1rem;">${item.amount.toLocaleString()}원</strong>
+            </div>
+            ${adminHTML}
+        `;
+        listContainer.appendChild(div);
+    });
+}
+
+const expenseModal = document.getElementById('expense-form-modal');
+const expenseForm = document.getElementById('expense-form');
+
+window.openExpenseModal = (id = null, title = '', amount = '') => {
+    document.getElementById('form-expense-id').value = id || '';
+    document.getElementById('form-expense-title').value = title;
+    document.getElementById('form-expense-amount').value = amount;
+
+    if (id) {
+        document.getElementById('form-expense-title').dataset.oldData = JSON.stringify({ title, amount });
+    }
+
+    document.getElementById('expense-modal-title').innerText = id ? '지출 내역 수정' : '지출 내역 추가';
+    expenseModal.classList.add('show');
+};
+
+document.getElementById('add-expense-btn')?.addEventListener('click', () => openExpenseModal());
+document.getElementById('close-expense-modal')?.addEventListener('click', () => expenseModal.classList.remove('show'));
+
+expenseForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('form-expense-id').value;
+    const title = document.getElementById('form-expense-title').value;
+    const amount = parseInt(document.getElementById('form-expense-amount').value, 10) || 0;
+
+    const meta = currentUser.user_metadata || {};
+    const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
+
+    const data = {
+        title: title,
+        amount: amount,
+        payer_id: currentUser.id
+    };
+
+    if (id) {
+        const oldDataRaw = document.getElementById('form-expense-title').dataset.oldData;
+        const oldData = oldDataRaw ? JSON.parse(oldDataRaw) : {};
+
+        const { error } = await db.from('expenses').update(data).eq('id', id);
+        if (error) alert('수정 실패: ' + error.message);
+        else {
+            await db.from('expense_histories').insert([{
+                expense_id: id,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                old_data: oldData,
+                new_data: data,
+                action: 'UPDATE'
+            }]);
+        }
+    } else {
+        data.created_by_email = currentUser.email;
+        data.created_by_name = userName;
+        const { data: inserted, error } = await db.from('expenses').insert([data]).select();
+
+        if (error) alert('등록 실패: ' + error.message);
+        else if (inserted && inserted.length > 0) {
+            await db.from('expense_histories').insert([{
+                expense_id: inserted[0].id,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                new_data: inserted[0],
+                action: 'INSERT'
+            }]);
+        }
+    }
+    expenseModal.classList.remove('show');
+    fetchExpenses();
+});
+
+window.deleteExpense = async (id, oldDataRaw) => {
+    if (confirm('이 지출 내역을 삭제하시겠습니까?')) {
+        const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+        const oldData = oldDataRaw ? JSON.parse(decodeURIComponent(oldDataRaw)) : {};
+
+        await db.from('expense_histories').insert([{
+            expense_id: id,
+            modified_by_email: currentUser.email,
+            modified_by_name: userName,
+            old_data: oldData,
+            action: 'DELETE'
+        }]);
+
+        await db.from('expenses').delete().eq('id', id);
+        fetchExpenses();
+    }
+};
+
+window.openExpenseHistoryModal = async () => {
+    if (!db) return;
+    const { data: histories, error } = await db.from('expense_histories').select('*').order('created_at', { ascending: false }).limit(30);
+
+    const container = document.getElementById('history-container');
+    container.innerHTML = '';
+
+    if (error || !histories || histories.length === 0) {
+        container.innerHTML = `<p style="color:white; text-align:center;">기록이 없습니다.</p>`;
+    } else {
+        histories.forEach(h => {
+            const timeStr = new Date(h.created_at).toLocaleString('ko-KR');
+            let actionText = '';
+            if (h.action === 'INSERT') {
+                actionText = `<span style="color:#64dd17;">[추가]</span> ${h.new_data?.title} - ${Number(h.new_data?.amount).toLocaleString()}원`;
+            } else if (h.action === 'UPDATE') {
+                actionText = `<span style="color:#ffb300;">[수정]</span> ${h.old_data?.title} -> ${h.new_data?.title} (${Number(h.new_data?.amount).toLocaleString()}원)`;
+            } else if (h.action === 'DELETE') {
+                actionText = `<span style="color:#ff1744;">[삭제]</span> ${h.old_data?.title}`;
+            }
+            container.innerHTML += `
+                <div class="history-item">
+                    <p style="margin-bottom:0.3rem;">${actionText}</p>
+                    <p class="meta" style="margin-top:0.2rem;">✍️ <b>${h.modified_by_name}</b> <span style="font-size:0.75rem;">(${timeStr})</span></p>
+                </div>
+            `;
+        });
+    }
+    document.getElementById('history-modal').classList.add('show');
 };

@@ -36,6 +36,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             disableMobile: "true"
         });
 
+        const togglePastBtn = document.getElementById('toggle-past-schedules');
+        if (togglePastBtn) {
+            togglePastBtn.addEventListener('change', () => {
+                const isChecked = togglePastBtn.checked;
+                document.querySelectorAll('.past-schedule-li').forEach(el => {
+                    el.style.display = isChecked ? 'list-item' : 'none';
+                });
+                // Toggle headers based on visibility
+                document.querySelectorAll('.date-header-li').forEach(headerLi => {
+                    const dateMatch = headerLi.className.match(/date-(\d{4}-\d{2}-\d{2})/);
+                    if (dateMatch) {
+                        const dateStr = dateMatch[1];
+                        const schedulesForDate = document.querySelectorAll(`.past-for-${dateStr}, .future-for-${dateStr}`);
+                        let anyVisible = false;
+                        schedulesForDate.forEach(el => {
+                            if (el.style.display !== 'none') anyVisible = true;
+                        });
+                        headerLi.style.display = anyVisible ? 'list-item' : 'none';
+                    }
+                });
+            });
+        }
+
     } catch (e) {
         console.error("Failed to initialize Supabase:", e);
         document.getElementById('schedule-container').innerHTML = '<li><p>DB 연결/설정 필요</p></li>';
@@ -200,12 +223,16 @@ async function fetchSchedules() {
     schedules.forEach((schedule, index) => {
         const li = document.createElement('li');
 
-        let headerHTML = '';
         if (schedule.schedule_date !== currentDate) {
             const dateObj = new Date(schedule.schedule_date);
             const days = ['일', '월', '화', '수', '목', '금', '토'];
             const dayStr = days[dateObj.getDay()];
-            headerHTML = `<strong style="display:block; margin-top:1rem; margin-bottom:0.5rem; font-size:1.15rem; color:#fff;">🌟 ${schedule.schedule_date} (${dayStr}요일)</strong>`;
+            
+            const headerLi = document.createElement('li');
+            headerLi.className = `date-header-li date-${schedule.schedule_date}`;
+            headerLi.innerHTML = `<strong style="display:block; margin-top:1rem; margin-bottom:0.5rem; font-size:1.15rem; color:#fff;">🌟 ${schedule.schedule_date} (${dayStr}요일)</strong>`;
+            container.appendChild(headerLi);
+            
             currentDate = schedule.schedule_date;
         }
 
@@ -231,8 +258,15 @@ async function fetchSchedules() {
 
         const authorText = schedule.created_by_name ? `<span style="font-size:0.75rem; color:#aaa; font-weight:normal; margin-left:0.5rem;">(등록: ${schedule.created_by_name})</span>` : '';
 
+        const now = new Date();
+        const scheduleDateTime = new Date(`${schedule.schedule_date}T${schedule.schedule_time}`);
+        const isPast = scheduleDateTime < now;
+
+        li.className = isPast ? `past-schedule-li past-for-${schedule.schedule_date}` : `future-schedule-li future-for-${schedule.schedule_date}`;
+        const isChecked = document.getElementById('toggle-past-schedules') && document.getElementById('toggle-past-schedules').checked;
+        li.style.display = (isPast && !isChecked) ? 'none' : 'list-item';
+
         li.innerHTML = `
-            ${headerHTML}
             <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; margin-top: 0.5rem; border-left: 3px solid #00bcd4;">
                 <p style="color: #fff; font-weight:bold; margin-bottom: 0.3rem;">
                     [${schedule.schedule_time.slice(0, 5)}] ${schedule.title} ${authorText}
@@ -265,6 +299,9 @@ async function fetchSchedules() {
         }
         container.appendChild(li);
     });
+
+    const togglePastBtn = document.getElementById('toggle-past-schedules');
+    if (togglePastBtn) togglePastBtn.dispatchEvent(new Event('change'));
 }
 
 // FORMATTING & EVENTS FOR SCHEDULE

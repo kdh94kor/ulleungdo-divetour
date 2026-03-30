@@ -64,10 +64,15 @@
     <main class="content-grid">
         <!-- Section 1: Schedule -->
         <section class="glass-card" id="schedule-section">
-            <div class="card-header">
+            <div class="card-header" style="flex-wrap: wrap; gap: 0.5rem;">
                 <h2><span class="icon">🗺️</span> 일정 공유</h2>
-                <button id="add-schedule-btn" class="btn primary-btn admin-only"
-                    style="display:none; padding:0.8rem 1rem; font-size:1.05rem; line-height:1.2;">+ 일정 추가</button>
+                <div style="display:flex; align-items:center; gap: 0.5rem; flex-wrap: wrap;">
+                    <label style="color: #fff; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; background: rgba(0,0,0,0.2); padding: 0.4rem 0.6rem; border-radius: 4px;">
+                        <input type="checkbox" id="toggle-past-schedules" style="margin-right:0.3rem; accent-color:#00bcd4; width:14px; height:14px;"> 완료된 일정보기
+                    </label>
+                    <button id="add-schedule-btn" class="btn primary-btn admin-only"
+                        style="display:none; padding:0.4rem 0.8rem; font-size:0.95rem; line-height:1.2;">+ 추가</button>
+                </div>
             </div>
             <div class="card-content">
                 <ul class="timeline" id="schedule-container">

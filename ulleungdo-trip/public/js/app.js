@@ -1,3 +1,23 @@
+const originalLog = console.log;
+originalLog(
+    `%c
+
+  ███   ███  ████   ███  █   █ █████  ███   ███ 
+ █   █ █   █ █   █   █   █   █ █     █   █ █   █
+  ███   ███  █   █   █   █   █ ████   ███   ███ 
+ █   █ █   █ █   █   █    █ █  █     █   █ █   █
+  ███   ███  ████   ███    █   █████  ███   ███ 
+
+  🐬`,
+    'color: #00bcd4; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px #000;'
+);
+
+console.log = function () { };
+console.info = function () { };
+console.warn = function () { };
+console.error = function () { };
+console.dir = function () { };
+
 let db;
 let currentUser = null;
 let datePicker = null;
@@ -227,12 +247,12 @@ async function fetchSchedules() {
             const dateObj = new Date(schedule.schedule_date);
             const days = ['일', '월', '화', '수', '목', '금', '토'];
             const dayStr = days[dateObj.getDay()];
-            
+
             const headerLi = document.createElement('li');
             headerLi.className = `date-header-li date-${schedule.schedule_date}`;
             headerLi.innerHTML = `<strong style="display:block; margin-top:1rem; margin-bottom:0.5rem; font-size:1.15rem; color:#fff;">🌟 ${schedule.schedule_date} (${dayStr}요일)</strong>`;
             container.appendChild(headerLi);
-            
+
             currentDate = schedule.schedule_date;
         }
 

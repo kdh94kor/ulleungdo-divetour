@@ -106,9 +106,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     const paddedHr = String(hr).padStart(2, '0');
                     const paddedMin = String(min).padStart(2, '0');
+                    const timeStr = `${paddedHr}:${paddedMin}`;
 
                     // 텍스트박스 값 즉시 동기화
-                    instance.input.value = `${paddedHr}:${paddedMin}`;
+                    instance.input.value = timeStr;
 
                     if (instance.selectedDates.length) {
                         instance.selectedDates[0].setHours(hr);
@@ -116,8 +117,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } else {
                         const d = new Date();
                         d.setHours(hr, min, 0, 0);
-                        instance.setDate(d, false);
+                        instance.selectedDates = [d];
                     }
+                    // Flatpickr 내부 참조값도 즉시 업데이트하여 close 시 원복 방지
+                    instance.latestSelectedDateObj = instance.selectedDates[0];
+                    instance.value = timeStr;
                 };
 
                 if (instance.hourElement) {

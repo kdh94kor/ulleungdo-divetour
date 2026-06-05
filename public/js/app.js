@@ -72,23 +72,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 }
                 const syncTime = () => {
-                    const hr = instance.hourElement ? instance.hourElement.value : '00';
-                    const min = instance.minuteElement ? instance.minuteElement.value : '00';
-                    const paddedHr = String(hr).padStart(2, '0');
-                    const paddedMin = String(min).padStart(2, '0');
-                    instance.setDate(`${paddedHr}:${paddedMin}`, true);
+                    const hr = instance.hourElement ? parseInt(instance.hourElement.value, 10) : 0;
+                    const min = instance.minuteElement ? parseInt(instance.minuteElement.value, 10) : 0;
+                    if (isNaN(hr) || isNaN(min)) return;
+
+                    if (!instance.selectedDates.length) {
+                        const d = new Date();
+                        d.setHours(hr, min, 0, 0);
+                        instance.setDate(d, false);
+                    } else {
+                        instance.selectedDates[0].setHours(hr);
+                        instance.selectedDates[0].setMinutes(min);
+                    }
+                    instance.updateValue();
                 };
                 if (instance.hourElement) {
-                    instance.hourElement.addEventListener('input', () => {
-                        instance.updateTime();
-                    });
+                    instance.hourElement.addEventListener('input', syncTime);
                     instance.hourElement.addEventListener('blur', syncTime);
                     instance.hourElement.addEventListener('change', syncTime);
                 }
                 if (instance.minuteElement) {
-                    instance.minuteElement.addEventListener('input', () => {
-                        instance.updateTime();
-                    });
+                    instance.minuteElement.addEventListener('input', syncTime);
                     instance.minuteElement.addEventListener('blur', syncTime);
                     instance.minuteElement.addEventListener('change', syncTime);
                 }

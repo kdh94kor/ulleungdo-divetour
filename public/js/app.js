@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         // 24시간제 시간 컨트롤 (Flatpickr) 초기화
+        let lastTypedTime = null;
         timePicker = flatpickr("#time-wrapper", {
             wrap: true,
             allowInput: true,
@@ -76,6 +77,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const min = instance.minuteElement ? parseInt(instance.minuteElement.value, 10) : 0;
                     if (isNaN(hr) || isNaN(min)) return;
 
+                    const paddedHr = String(hr).padStart(2, '0');
+                    const paddedMin = String(min).padStart(2, '0');
+                    lastTypedTime = `${paddedHr}:${paddedMin}`;
+
                     if (!instance.selectedDates.length) {
                         const d = new Date();
                         d.setHours(hr, min, 0, 0);
@@ -85,6 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         instance.selectedDates[0].setMinutes(min);
                     }
                     instance.updateValue();
+                    instance.value = lastTypedTime;
                 };
                 if (instance.hourElement) {
                     instance.hourElement.addEventListener('input', syncTime);
@@ -95,6 +101,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     instance.minuteElement.addEventListener('input', syncTime);
                     instance.minuteElement.addEventListener('blur', syncTime);
                     instance.minuteElement.addEventListener('change', syncTime);
+                }
+            },
+            onClose: function(selectedDates, dateStr, instance) {
+                if (lastTypedTime) {
+                    instance.setDate(lastTypedTime, true);
+                    lastTypedTime = null;
                 }
             }
         });

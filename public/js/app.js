@@ -74,13 +74,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const syncTime = () => {
                     const hr = instance.hourElement ? instance.hourElement.value : '00';
                     const min = instance.minuteElement ? instance.minuteElement.value : '00';
-                    instance.setDate(`${hr}:${min}`, true);
+                    const paddedHr = String(hr).padStart(2, '0');
+                    const paddedMin = String(min).padStart(2, '0');
+                    instance.setDate(`${paddedHr}:${paddedMin}`, true);
                 };
                 if (instance.hourElement) {
+                    instance.hourElement.addEventListener('input', () => {
+                        instance.updateTime();
+                    });
                     instance.hourElement.addEventListener('blur', syncTime);
                     instance.hourElement.addEventListener('change', syncTime);
                 }
                 if (instance.minuteElement) {
+                    instance.minuteElement.addEventListener('input', () => {
+                        instance.updateTime();
+                    });
                     instance.minuteElement.addEventListener('blur', syncTime);
                     instance.minuteElement.addEventListener('change', syncTime);
                 }

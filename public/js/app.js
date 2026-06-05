@@ -12,11 +12,11 @@ originalLog(
     'color: #00bcd4; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px #000;'
 );
 
-console.log = function () { };
-console.info = function () { };
-console.warn = function () { };
-console.error = function () { };
-console.dir = function () { };
+// console.log = function () { };
+// console.info = function () { };
+// console.warn = function () { };
+// console.error = function () { };
+// console.dir = function () { };
 
 let db;
 let currentUser = null;
@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
+        // 24시간제 시간 컨트롤 (Flatpickr) 초기화
         // 24시간제 시간 컨트롤 (Flatpickr) 초기화
         timePicker = flatpickr("#time-wrapper", {
             wrap: true,
@@ -124,11 +125,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     instance.value = timeStr;
                 };
 
-                if (instance.hourElement) {
-                    instance.hourElement.addEventListener('input', syncFromDropdown);
-                }
-                if (instance.minuteElement) {
-                    instance.minuteElement.addEventListener('input', syncFromDropdown);
+                // 드롭다운 컨테이너 내부의 모든 입력, 클릭, 휠 스크롤 이벤트를 감지하여 실시간 즉시 반영!
+                if (instance.calendarContainer) {
+                    instance.calendarContainer.addEventListener('input', syncFromDropdown);
+                    instance.calendarContainer.addEventListener('click', syncFromDropdown);
+                    instance.calendarContainer.addEventListener('wheel', syncFromDropdown);
                 }
             }
         });
@@ -151,7 +152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
             }
-        }, true); // capture phase로 flatpickr의 close 동작보다 먼저 실행되게 함
+        }, true); // capture phase로 flatpickr의 close 동작보다 먼저 실행되게 함 // capture phase로 flatpickr의 close 동작보다 먼저 실행되게 함
 
         const togglePastBtn = document.getElementById('toggle-past-schedules');
         if (togglePastBtn) {

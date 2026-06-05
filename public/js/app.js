@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         // 24시간제 시간 컨트롤 (Flatpickr) 초기화
-        let lastTypedTime = null;
+        let lastSyncedTime = null;
         timePicker = flatpickr("#time-wrapper", {
             wrap: true,
             allowInput: true,
@@ -65,48 +65,81 @@ document.addEventListener('DOMContentLoaded', async () => {
             time_24hr: true,
             disableMobile: "true",
             onReady: function(selectedDates, dateStr, instance) {
+                // 1. 텍스트박스 입력 시 드롭다운 즉시 동기화
                 if (instance.input) {
+                    instance.input.addEventListener('input', (e) => {
+                        const val = e.target.value;
+                        const parts = val.split(':');
+                        if (parts.length === 2) {
+                            const hr = parseInt(parts[0], 10);
+                            const min = parseInt(parts[1], 10);
+                            if (!isNaN(hr) && hr >= 0 && hr < 24 && !isNaN(min) && min >= 0 && min < 60) {
+                                const paddedHr = String(hr).padStart(2, '0');
+                                const paddedMin = String(min).padStart(2, '0');
+                                lastSyncedTime = `${paddedHr}:${paddedMin}`;
+
+                                if (instance.hourElement) instance.hourElement.value = paddedHr;
+                                if (instance.minuteElement) instance.minuteElement.value = paddedMin;
+
+                                if (instance.selectedDates.length) {
+                                    instance.selectedDates[0].setHours(hr);
+                                    instance.selectedDates[0].setMinutes(min);
+                                } else {
+                                    const d = new Date();
+                                    d.setHours(hr, min, 0, 0);
+                                    instance.setDate(d, false);
+                                }
+                            }
+                        }
+                    });
+
                     instance.input.addEventListener('blur', (e) => {
                         if (e.target.value) {
                             instance.setDate(e.target.value, true);
                         }
                     });
                 }
-                const syncTime = () => {
+
+                // 2. 드롭다운 변경 시 텍스트박스 즉시 동기화
+                const syncFromDropdown = () => {
+                    if (!instance.isOpen) return; // 사용자가 드롭다운을 열어놓고 조작할 때만 실행
                     const hr = instance.hourElement ? parseInt(instance.hourElement.value, 10) : 0;
                     const min = instance.minuteElement ? parseInt(instance.minuteElement.value, 10) : 0;
                     if (isNaN(hr) || isNaN(min)) return;
 
                     const paddedHr = String(hr).padStart(2, '0');
                     const paddedMin = String(min).padStart(2, '0');
-                    lastTypedTime = `${paddedHr}:${paddedMin}`;
+                    lastSyncedTime = `${paddedHr}:${paddedMin}`;
 
-                    if (!instance.selectedDates.length) {
+                    // 텍스트박스 값 즉시 동기화
+                    instance.input.value = lastSyncedTime;
+
+                    if (instance.selectedDates.length) {
+                        instance.selectedDates[0].setHours(hr);
+                        instance.selectedDates[0].setMinutes(min);
+                    } else {
                         const d = new Date();
                         d.setHours(hr, min, 0, 0);
                         instance.setDate(d, false);
-                    } else {
-                        instance.selectedDates[0].setHours(hr);
-                        instance.selectedDates[0].setMinutes(min);
                     }
-                    instance.updateValue();
-                    instance.value = lastTypedTime;
                 };
+
                 if (instance.hourElement) {
-                    instance.hourElement.addEventListener('input', syncTime);
-                    instance.hourElement.addEventListener('blur', syncTime);
-                    instance.hourElement.addEventListener('change', syncTime);
+                    instance.hourElement.addEventListener('input', syncFromDropdown);
+                    instance.hourElement.addEventListener('change', syncFromDropdown);
+                    instance.hourElement.addEventListener('blur', syncFromDropdown);
                 }
                 if (instance.minuteElement) {
-                    instance.minuteElement.addEventListener('input', syncTime);
-                    instance.minuteElement.addEventListener('blur', syncTime);
-                    instance.minuteElement.addEventListener('change', syncTime);
+                    instance.minuteElement.addEventListener('input', syncFromDropdown);
+                    instance.minuteElement.addEventListener('change', syncFromDropdown);
+                    instance.minuteElement.addEventListener('blur', syncFromDropdown);
                 }
             },
             onClose: function(selectedDates, dateStr, instance) {
-                if (lastTypedTime) {
-                    instance.setDate(lastTypedTime, true);
-                    lastTypedTime = null;
+                // 창이 닫힐 때 최종 동기화된 시간으로 고정하여 초기화 방지
+                if (lastSyncedTime) {
+                    instance.setDate(lastSyncedTime, false);
+                    lastSyncedTime = null;
                 }
             }
         });

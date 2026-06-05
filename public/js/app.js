@@ -55,7 +55,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         // 24시간제 시간 컨트롤 (Flatpickr) 초기화
-        let lastSyncedTime = null;
         timePicker = flatpickr("#time-wrapper", {
             wrap: true,
             allowInput: true,
@@ -76,7 +75,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                             if (!isNaN(hr) && hr >= 0 && hr < 24 && !isNaN(min) && min >= 0 && min < 60) {
                                 const paddedHr = String(hr).padStart(2, '0');
                                 const paddedMin = String(min).padStart(2, '0');
-                                lastSyncedTime = `${paddedHr}:${paddedMin}`;
 
                                 if (instance.hourElement) instance.hourElement.value = paddedHr;
                                 if (instance.minuteElement) instance.minuteElement.value = paddedMin;
@@ -102,17 +100,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // 2. 드롭다운 변경 시 텍스트박스 즉시 동기화
                 const syncFromDropdown = () => {
-                    if (!instance.isOpen) return; // 사용자가 드롭다운을 열어놓고 조작할 때만 실행
                     const hr = instance.hourElement ? parseInt(instance.hourElement.value, 10) : 0;
                     const min = instance.minuteElement ? parseInt(instance.minuteElement.value, 10) : 0;
                     if (isNaN(hr) || isNaN(min)) return;
 
                     const paddedHr = String(hr).padStart(2, '0');
                     const paddedMin = String(min).padStart(2, '0');
-                    lastSyncedTime = `${paddedHr}:${paddedMin}`;
 
                     // 텍스트박스 값 즉시 동기화
-                    instance.input.value = lastSyncedTime;
+                    instance.input.value = `${paddedHr}:${paddedMin}`;
 
                     if (instance.selectedDates.length) {
                         instance.selectedDates[0].setHours(hr);
@@ -126,23 +122,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (instance.hourElement) {
                     instance.hourElement.addEventListener('input', syncFromDropdown);
-                    instance.hourElement.addEventListener('change', syncFromDropdown);
-                    instance.hourElement.addEventListener('blur', syncFromDropdown);
                 }
                 if (instance.minuteElement) {
                     instance.minuteElement.addEventListener('input', syncFromDropdown);
-                    instance.minuteElement.addEventListener('change', syncFromDropdown);
-                    instance.minuteElement.addEventListener('blur', syncFromDropdown);
-                }
-            },
-            onClose: function(selectedDates, dateStr, instance) {
-                // 창이 닫힐 때 최종 동기화된 시간으로 고정하여 초기화 방지
-                if (lastSyncedTime) {
-                    instance.setDate(lastSyncedTime, false);
-                    lastSyncedTime = null;
                 }
             }
         });
+
+        // 사용자가 드롭다운 외부(다른 입력창 등)를 클릭하여 창이 닫힐 때, 
+        // 입력 중이던 시간 값을 날리지 않고 텍스트박스의 값으로 강제 고정/반영
+        document.addEventListener('mousedown', (e) => {
+            if (timePicker && timePicker.isOpen) {
+                const fpContainer = timePicker.calendarContainer;
+                const wrapper = document.getElementById('time-wrapper');
+                if (fpContainer && !fpContainer.contains(e.target) && wrapper && !wrapper.contains(e.target)) {
+                    // 드롭다운의 현재 시/분 입력값을 읽음
+                    const hr = timePicker.hourElement ? parseInt(timePicker.hourElement.value, 10) : 0;
+                    const min = timePicker.minuteElement ? parseInt(timePicker.minuteElement.value, 10) : 0;
+                    if (!isNaN(hr) && hr >= 0 && hr < 24 && !isNaN(min) && min >= 0 && min < 60) {
+                        const paddedHr = String(hr).padStart(2, '0');
+                        const paddedMin = String(min).padStart(2, '0');
+                        // 드롭다운 외부 클릭 시, close 이벤트 전에 수파베이스 인스턴스에 값을 주입
+                        timePicker.setDate(`${paddedHr}:${paddedMin}`, false);
+                    }
+                }
+            }
+        }, true); // capture phase로 flatpickr의 close 동작보다 먼저 실행되게 함
 
         const togglePastBtn = document.getElementById('toggle-past-schedules');
         if (togglePastBtn) {

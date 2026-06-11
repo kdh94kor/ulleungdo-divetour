@@ -1145,11 +1145,6 @@ async function fetchExpenses() {
     const summaryContainer = document.getElementById('expense-summary-container');
     listContainer.innerHTML = '';
 
-    let totalExpense = 0;
-    expenses.forEach(ex => {
-        if (!ex.is_settled) totalExpense += ex.amount;
-    });
-
     const numPeople = profiles.length;
 
     // Initialize balances
@@ -1157,6 +1152,8 @@ async function fetchExpenses() {
     profiles.forEach(p => {
         balances[p.id] = { name: p.display_name || p.email.split('@')[0], paid: 0, owe: 0, delta: 0 };
     });
+
+    let totalExpense = 0;
 
     // Calculate individual payments and Owe shares
     expenses.forEach(ex => {
@@ -1179,13 +1176,26 @@ async function fetchExpenses() {
             pIds = profiles.map(p => p.id);
         }
 
-        // 3. Add to each participant's owe share
+        // 3. Add to each participant's owe share (or adjust if settled)
         const splitAmount = ex.amount / pIds.length;
+        const settledParticipantIds = Array.isArray(ex.settled_participant_ids) ? ex.settled_participant_ids : [];
+        
+        let settledAmount = 0;
         pIds.forEach(pId => {
             if (balances[pId]) {
-                balances[pId].owe += splitAmount;
+                // If the participant is settled (and is not the payer), they no longer owe, and the payer has received it
+                if (settledParticipantIds.includes(pId) && pId !== ex.payer_id) {
+                    settledAmount += splitAmount;
+                    if (ex.payer_id && balances[ex.payer_id]) {
+                        balances[ex.payer_id].paid -= splitAmount;
+                    }
+                } else {
+                    // Otherwise, they still owe their share
+                    balances[pId].owe += splitAmount;
+                }
             }
         });
+        totalExpense += (ex.amount - settledAmount);
     });
 
     // Calculate deltas and Render Summary
@@ -1238,14 +1248,6 @@ async function fetchExpenses() {
         if (itemPIds.length === 0) {
             itemPIds = profiles.map(p => p.id);
         }
-        const participantNames = itemPIds.map(id => balances[id]?.name || '알수없음');
-
-        let participantsText = '';
-        if (itemPIds.length === profiles.length) {
-            participantsText = `<span style="font-size:0.75rem; color:#80deea; margin-left:0.5rem;">👥 전체 (${itemPIds.length}명)</span>`;
-        } else {
-            participantsText = `<span style="font-size:0.75rem; color:#80deea; margin-left:0.5rem; word-break:break-all;">👥 ${participantNames.join(', ')}</span>`;
-        }
 
         let adminHTML = '';
         const isOwner = currentUser && (currentUser.email === item.created_by_email || currentUser.id === item.payer_id);
@@ -1254,15 +1256,16 @@ async function fetchExpenses() {
             const escapedTitle = item.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const escapedOldData = encodeURIComponent(JSON.stringify({ title: item.title, amount: item.amount, participant_ids: item.participant_ids || [] }));
             const escapedParticipants = encodeURIComponent(JSON.stringify(item.participant_ids || []));
+            const escapedSettled = encodeURIComponent(JSON.stringify(item.settled_participant_ids || []));
             adminHTML = `
                 <div class="action-buttons admin-only" style="margin-top: 0.5rem;">
-                    <button class="btn sm" onclick="openExpenseModal('${item.id}', '${escapedTitle}', ${item.amount}, '${escapedParticipants}')">수정</button>
+                    <button class="btn sm" onclick="openExpenseModal('${item.id}', '${escapedTitle}', ${item.amount}, '${escapedParticipants}', '${escapedSettled}', ${item.is_settled})">수정</button>
                     <button class="btn sm" onclick="deleteExpense('${item.id}', '${escapedOldData}')">삭제</button>
                 </div>
             `;
         }
 
-        const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(결제: ${item.created_by_name})</span> ${participantsText}` : `<br>${participantsText}`;
+        const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(결제: ${item.created_by_name})</span>` : '';
         const disabledAttr = isOwner ? '' : 'disabled="true"';
         const checkedAttr = item.is_settled ? 'checked' : '';
         const textClass = item.is_settled ? 'packed-text' : '';
@@ -1273,6 +1276,25 @@ async function fetchExpenses() {
             checkboxHTML = `<input type="checkbox" id="expense-chk-${item.id}" ${checkedAttr} ${disabledAttr} onchange="toggleSettlement('${item.id}', this, '${escapedTitleForCheck}')" style="width:18px; height:18px; accent-color:#00e676; cursor:${isOwner ? 'pointer' : 'not-allowed'}; margin-top:0.25rem;">`;
         }
 
+        // Render participant checkboxes
+        let participantsHTML = '<div class="expense-participants-list" style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; margin-left:1.6rem;">';
+        itemPIds.forEach(pId => {
+            const pName = balances[pId]?.name || '알수없음';
+            const isSettled = Array.isArray(item.settled_participant_ids) && item.settled_participant_ids.includes(pId);
+            const checkboxId = `chk-p-${item.id}-${pId}`;
+            const pDisabledAttr = isOwner ? '' : 'disabled="true"';
+            const pCheckedAttr = isSettled ? 'checked' : '';
+            const checkedStyle = isSettled ? 'opacity: 0.6; text-decoration: line-through;' : '';
+            const cursorStyle = isOwner ? 'cursor: pointer;' : 'cursor: not-allowed;';
+            participantsHTML += `
+                <label style="color:#fff; font-size:0.75rem; display:flex; align-items:center; gap:0.25rem; background:rgba(255,255,255,0.08); padding:0.2rem 0.4rem; border-radius:4px; border:1px solid rgba(255,255,255,0.05); ${checkedStyle} ${cursorStyle}">
+                    <input type="checkbox" id="${checkboxId}" ${pCheckedAttr} ${pDisabledAttr} onchange="toggleParticipantSettlement('${item.id}', '${pId}', this.checked)" style="accent-color:#00bcd4; width:13px; height:13px; ${cursorStyle}">
+                    ${pName}
+                </label>
+            `;
+        });
+        participantsHTML += '</div>';
+
         div.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                 <div style="display:flex; gap:0.5rem; align-items:flex-start;">
@@ -1281,6 +1303,7 @@ async function fetchExpenses() {
                 </div>
                 <strong style="color:#ffca28; font-size:1.1rem; flex-shrink:0; margin-left:0.5rem;">${item.amount.toLocaleString()}원</strong>
             </div>
+            ${participantsHTML}
             ${adminHTML}
         `;
         listContainer.appendChild(div);
@@ -1290,7 +1313,7 @@ async function fetchExpenses() {
 const expenseModal = document.getElementById('expense-form-modal');
 const expenseForm = document.getElementById('expense-form');
 
-window.openExpenseModal = (id = null, title = '', amount = '', participantIdsRaw = '') => {
+window.openExpenseModal = (id = null, title = '', amount = '', participantIdsRaw = '', settledParticipantIdsRaw = '', isSettled = false) => {
     document.getElementById('form-expense-id').value = id || '';
     document.getElementById('form-expense-title').value = title;
     document.getElementById('form-expense-amount').value = amount;
@@ -1304,11 +1327,22 @@ window.openExpenseModal = (id = null, title = '', amount = '', participantIdsRaw
         }
     }
 
+    let settledParticipantIds = [];
+    if (settledParticipantIdsRaw) {
+        try {
+            settledParticipantIds = JSON.parse(decodeURIComponent(settledParticipantIdsRaw));
+        } catch (err) {
+            console.error('Failed to parse settledParticipantIds', err);
+        }
+    }
+
     if (id) {
         document.getElementById('form-expense-title').dataset.oldData = JSON.stringify({
             title,
             amount,
-            participant_ids: participantIds
+            participant_ids: participantIds,
+            settled_participant_ids: settledParticipantIds,
+            is_settled: isSettled
         });
     }
 
@@ -1354,11 +1388,31 @@ expenseForm?.addEventListener('submit', async (e) => {
     const meta = currentUser.user_metadata || {};
     const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
 
+    let settledParticipantIds = [];
+    if (id) {
+        // Fetch current settled participant IDs to filter them based on updated participantIds list
+        const { data: item, error: fetchError } = await db.from('expenses').select('settled_participant_ids').eq('id', id).single();
+        if (!fetchError && item && Array.isArray(item.settled_participant_ids)) {
+            // Keep only those who are still in the new participantIds list
+            settledParticipantIds = item.settled_participant_ids.filter(pId => participantIds.includes(pId));
+        }
+    } else {
+        // For new expense: if payer is in the participants, mark them settled by default
+        if (participantIds.includes(currentUser.id)) {
+            settledParticipantIds.push(currentUser.id);
+        }
+    }
+
+    // Determine if all participants are settled
+    const allSettled = id ? participantIds.every(pId => settledParticipantIds.includes(pId)) : false;
+
     const data = {
         title: title,
         amount: amount,
         payer_id: currentUser.id,
-        participant_ids: participantIds
+        participant_ids: participantIds,
+        settled_participant_ids: settledParticipantIds,
+        is_settled: allSettled
     };
 
     if (id) {
@@ -1429,7 +1483,28 @@ window.toggleSettlement = async (id, checkboxElem, title) => {
         else label.classList.remove('packed-text');
     }
 
-    const { error } = await db.from('expenses').update({ is_settled: isChecked }).eq('id', id);
+    // Get the expense to know participants
+    const { data: item, error: fetchError } = await db.from('expenses').select('*').eq('id', id).single();
+    if (fetchError || !item) {
+        alert('지출 내역을 불러오는데 실패했습니다.');
+        checkboxElem.checked = !isChecked;
+        return;
+    }
+
+    let settledIds = [];
+    if (isChecked) {
+        // Mark ALL participants as settled
+        if (Array.isArray(item.participant_ids) && item.participant_ids.length > 0) {
+            settledIds = item.participant_ids;
+        } else {
+            settledIds = allProfiles.map(p => p.id);
+        }
+    } else {
+        // Mark NONE as settled
+        settledIds = [];
+    }
+
+    const { error } = await db.from('expenses').update({ is_settled: isChecked, settled_participant_ids: settledIds }).eq('id', id);
     if (!error && currentUser) {
         const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
         const actionStr = isChecked ? 'SETTLED' : 'UNSETTLED';
@@ -1439,6 +1514,86 @@ window.toggleSettlement = async (id, checkboxElem, title) => {
             modified_by_name: userName,
             action: actionStr
         }]);
+    }
+
+    fetchExpenses();
+};
+
+window.toggleParticipantSettlement = async (expenseId, participantId, isChecked) => {
+    // Fetch expense
+    const { data: item, error: fetchError } = await db.from('expenses').select('*').eq('id', expenseId).single();
+    if (fetchError || !item) {
+        alert('지출 내역을 불러오는데 실패했습니다.');
+        const chk = document.getElementById(`chk-p-${expenseId}-${participantId}`);
+        if (chk) chk.checked = !isChecked;
+        return;
+    }
+
+    // Double check if isOwner
+    const isOwner = currentUser && (currentUser.email === item.created_by_email || currentUser.id === item.payer_id);
+    if (!isOwner) {
+        alert('수정 권한이 없습니다.');
+        const chk = document.getElementById(`chk-p-${expenseId}-${participantId}`);
+        if (chk) chk.checked = !isChecked;
+        return;
+    }
+
+    let settledIds = Array.isArray(item.settled_participant_ids) ? item.settled_participant_ids : [];
+    if (isChecked) {
+        if (!settledIds.includes(participantId)) {
+            settledIds.push(participantId);
+        }
+    } else {
+        settledIds = settledIds.filter(id => id !== participantId);
+    }
+
+    // Determine total participants for comparison
+    let totalPIds = [];
+    if (Array.isArray(item.participant_ids) && item.participant_ids.length > 0) {
+        totalPIds = item.participant_ids;
+    } else {
+        totalPIds = allProfiles.map(p => p.id);
+    }
+
+    // All elements in totalPIds are in settledIds?
+    const allSettled = totalPIds.every(id => settledIds.includes(id));
+
+    const updateData = {
+        settled_participant_ids: settledIds,
+        is_settled: allSettled
+    };
+
+    const { error: updateError } = await db.from('expenses').update(updateData).eq('id', expenseId);
+    if (updateError) {
+        alert('정산 상태 업데이트 실패: ' + updateError.message);
+        const chk = document.getElementById(`chk-p-${expenseId}-${participantId}`);
+        if (chk) chk.checked = !isChecked;
+        return;
+    }
+
+    // Insert to history
+    if (currentUser) {
+        const userName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
+        const targetProfile = allProfiles.find(p => p.id === participantId);
+        const targetName = targetProfile ? (targetProfile.display_name || targetProfile.email.split('@')[0]) : '알수없음';
+        const actionStr = isChecked ? `SETTLED_PARTICIPANT:${targetName}` : `UNSETTLED_PARTICIPANT:${targetName}`;
+        
+        await db.from('settlement_histories').insert([{
+            expense_id: expenseId,
+            modified_by_email: currentUser.email,
+            modified_by_name: userName,
+            action: actionStr
+        }]);
+
+        // If it transition to all settled, we can also log a SETTLED action for history log
+        if (allSettled && !item.is_settled) {
+            await db.from('settlement_histories').insert([{
+                expense_id: expenseId,
+                modified_by_email: currentUser.email,
+                modified_by_name: userName,
+                action: 'SETTLED'
+            }]);
+        }
     }
 
     fetchExpenses();
@@ -1493,6 +1648,12 @@ window.openSettlementHistoryModal = async () => {
                 actionText = `<span style="color:#00e676;">[정산완료 처리]</span> ${expenseTitle}`;
             } else if (h.action === 'UNSETTLED') {
                 actionText = `<span style="color:#ff4081;">[정산완료 취소]</span> ${expenseTitle}`;
+            } else if (h.action.startsWith('SETTLED_PARTICIPANT:')) {
+                const name = h.action.split(':')[1];
+                actionText = `<span style="color:#00bcd4;">[개인 정산완료]</span> ${expenseTitle} (${name})`;
+            } else if (h.action.startsWith('UNSETTLED_PARTICIPANT:')) {
+                const name = h.action.split(':')[1];
+                actionText = `<span style="color:#ef5350;">[개인 정산취소]</span> ${expenseTitle} (${name})`;
             }
             container.innerHTML += `
                 <div class="history-item">

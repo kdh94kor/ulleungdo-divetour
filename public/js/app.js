@@ -22,6 +22,7 @@ let db;
 let currentUser = null;
 let datePicker = null;
 let timePicker = null;
+let allProfiles = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -1133,6 +1134,9 @@ async function fetchExpenses() {
         return;
     }
 
+    // Cache to global variable
+    allProfiles = profiles || [];
+
     // 2. Fetch expenses
     const { data: expenses, error: eError } = await db.from('expenses').select('*').order('created_at', { ascending: true });
     if (eError) return;
@@ -1147,32 +1151,51 @@ async function fetchExpenses() {
     });
 
     const numPeople = profiles.length;
-    const perPerson = numPeople > 0 ? Math.floor(totalExpense / numPeople) : 0;
 
     // Initialize balances
     const balances = {};
     profiles.forEach(p => {
-        balances[p.id] = { name: p.display_name || p.email.split('@')[0], paid: 0, delta: 0 };
+        balances[p.id] = { name: p.display_name || p.email.split('@')[0], paid: 0, owe: 0, delta: 0 };
     });
 
+    // Calculate individual payments and Owe shares
     expenses.forEach(ex => {
-        if (ex.is_settled) return; // Skip settled expenses entirely for N split
+        if (ex.is_settled) return; // Skip settled expenses
 
+        // 1. Handle payer's paid amount
         if (ex.payer_id && balances[ex.payer_id]) {
             balances[ex.payer_id].paid += ex.amount;
         } else if (ex.payer_id) {
-            balances[ex.payer_id] = { name: ex.created_by_name || '알수없음', paid: ex.amount, delta: 0 };
+            balances[ex.payer_id] = { name: ex.created_by_name || '알수없음', paid: ex.amount, owe: 0, delta: 0 };
         }
+
+        // 2. Determine participants for this item
+        let pIds = [];
+        if (Array.isArray(ex.participant_ids) && ex.participant_ids.length > 0) {
+            pIds = ex.participant_ids.filter(id => balances[id]);
+        }
+        // Backwards compatibility / Default is all profiles
+        if (pIds.length === 0) {
+            pIds = profiles.map(p => p.id);
+        }
+
+        // 3. Add to each participant's owe share
+        const splitAmount = ex.amount / pIds.length;
+        pIds.forEach(pId => {
+            if (balances[pId]) {
+                balances[pId].owe += splitAmount;
+            }
+        });
     });
 
     // Calculate deltas and Render Summary
     let summaryHTML = `<h3 style="color:#00e676; margin-top:0; margin-bottom:0.5rem; text-align:center; font-size:1.3rem;">총 경비: ${totalExpense.toLocaleString()}원</h3>`;
     if (numPeople > 0) {
-        summaryHTML += `<p style="text-align:center; color:#e3f2fd; margin-bottom:1rem; font-size:1rem;">참석 인원: ${numPeople}명 | <strong style="color:#ffca28;">1인당: ${perPerson.toLocaleString()}원</strong></p>`;
+        summaryHTML += `<p style="text-align:center; color:#e3f2fd; margin-bottom:1rem; font-size:1rem;">참석 인원: ${numPeople}명 | <strong style="color:#ffca28;">개별 정산 적용</strong></p>`;
         summaryHTML += `<div style="display:flex; flex-direction:column; gap:0.5rem; font-size: 0.95rem;">`;
 
         Object.values(balances).forEach(b => {
-            b.delta = b.paid - perPerson;
+            b.delta = b.paid - Math.round(b.owe);
             let statusHTML = '';
             if (b.delta > 0) {
                 statusHTML = `<strong style="color:#00e676;">+${b.delta.toLocaleString()}원 받기</strong>`;
@@ -1183,7 +1206,7 @@ async function fetchExpenses() {
             }
 
             summaryHTML += `<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.4rem;">
-                <span style="color:#fff;">${b.name} <span style="font-size:0.75rem; color:#aaa; margin-left:0.3rem;">[총 ${b.paid.toLocaleString()}원 지출]</span></span>
+                <span style="color:#fff;">${b.name} <span style="font-size:0.75rem; color:#aaa; margin-left:0.3rem;">[지출 ${b.paid.toLocaleString()}원 / 분담 ${Math.round(b.owe).toLocaleString()}원]</span></span>
                 <span>${statusHTML}</span>
             </div>`;
         });
@@ -1207,21 +1230,39 @@ async function fetchExpenses() {
         div.style.marginBottom = '0.5rem';
         div.style.borderLeft = '3px solid #00bcd4';
 
+        // Get participants list for display
+        let itemPIds = [];
+        if (Array.isArray(item.participant_ids) && item.participant_ids.length > 0) {
+            itemPIds = item.participant_ids.filter(id => balances[id]);
+        }
+        if (itemPIds.length === 0) {
+            itemPIds = profiles.map(p => p.id);
+        }
+        const participantNames = itemPIds.map(id => balances[id]?.name || '알수없음');
+
+        let participantsText = '';
+        if (itemPIds.length === profiles.length) {
+            participantsText = `<span style="font-size:0.75rem; color:#80deea; margin-left:0.5rem;">👥 전체 (${itemPIds.length}명)</span>`;
+        } else {
+            participantsText = `<span style="font-size:0.75rem; color:#80deea; margin-left:0.5rem; word-break:break-all;">👥 ${participantNames.join(', ')}</span>`;
+        }
+
         let adminHTML = '';
         const isOwner = currentUser && (currentUser.email === item.created_by_email || currentUser.id === item.payer_id);
 
         if (currentUser && isOwner) {
             const escapedTitle = item.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            const escapedOldData = encodeURIComponent(JSON.stringify({ title: item.title, amount: item.amount }));
+            const escapedOldData = encodeURIComponent(JSON.stringify({ title: item.title, amount: item.amount, participant_ids: item.participant_ids || [] }));
+            const escapedParticipants = encodeURIComponent(JSON.stringify(item.participant_ids || []));
             adminHTML = `
                 <div class="action-buttons admin-only" style="margin-top: 0.5rem;">
-                    <button class="btn sm" onclick="openExpenseModal('${item.id}', '${escapedTitle}', ${item.amount})">수정</button>
+                    <button class="btn sm" onclick="openExpenseModal('${item.id}', '${escapedTitle}', ${item.amount}, '${escapedParticipants}')">수정</button>
                     <button class="btn sm" onclick="deleteExpense('${item.id}', '${escapedOldData}')">삭제</button>
                 </div>
             `;
         }
 
-        const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(결제: ${item.created_by_name})</span>` : '';
+        const authorText = item.created_by_name ? `<br><span style="font-size:0.75rem; color:#aaa;">(결제: ${item.created_by_name})</span> ${participantsText}` : `<br>${participantsText}`;
         const disabledAttr = isOwner ? '' : 'disabled="true"';
         const checkedAttr = item.is_settled ? 'checked' : '';
         const textClass = item.is_settled ? 'packed-text' : '';
@@ -1249,13 +1290,44 @@ async function fetchExpenses() {
 const expenseModal = document.getElementById('expense-form-modal');
 const expenseForm = document.getElementById('expense-form');
 
-window.openExpenseModal = (id = null, title = '', amount = '') => {
+window.openExpenseModal = (id = null, title = '', amount = '', participantIdsRaw = '') => {
     document.getElementById('form-expense-id').value = id || '';
     document.getElementById('form-expense-title').value = title;
     document.getElementById('form-expense-amount').value = amount;
 
+    let participantIds = [];
+    if (participantIdsRaw) {
+        try {
+            participantIds = JSON.parse(decodeURIComponent(participantIdsRaw));
+        } catch (err) {
+            console.error('Failed to parse participantIds', err);
+        }
+    }
+
     if (id) {
-        document.getElementById('form-expense-title').dataset.oldData = JSON.stringify({ title, amount });
+        document.getElementById('form-expense-title').dataset.oldData = JSON.stringify({
+            title,
+            amount,
+            participant_ids: participantIds
+        });
+    }
+
+    // Render participant checkboxes
+    const container = document.getElementById('form-expense-participants-container');
+    if (container) {
+        container.innerHTML = '';
+        allProfiles.forEach(p => {
+            const name = p.display_name || p.email.split('@')[0];
+            // If it's a new expense OR participantIds is empty (meaning all participating), we check it.
+            // Otherwise, check only if their ID is in participantIds list.
+            const checked = (!id || participantIds.length === 0 || participantIds.includes(p.id)) ? 'checked' : '';
+            container.innerHTML += `
+                <label style="color:#fff; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; gap:0.3rem; background:rgba(255,255,255,0.05); padding:0.3rem 0.5rem; border-radius:4px; border:1px solid rgba(255,255,255,0.05);">
+                    <input type="checkbox" name="expense-participant" value="${p.id}" ${checked} style="accent-color:#00bcd4; width:15px; height:15px; cursor:pointer;">
+                    ${name}
+                </label>
+            `;
+        });
     }
 
     document.getElementById('expense-modal-title').innerText = id ? '지출 내역 수정' : '지출 내역 추가';
@@ -1271,13 +1343,22 @@ expenseForm?.addEventListener('submit', async (e) => {
     const title = document.getElementById('form-expense-title').value;
     const amount = parseInt(document.getElementById('form-expense-amount').value, 10) || 0;
 
+    const checkedBoxes = document.querySelectorAll('input[name="expense-participant"]:checked');
+    const participantIds = Array.from(checkedBoxes).map(cb => cb.value);
+
+    if (participantIds.length === 0) {
+        alert('정산 대상을 최소 한 명 이상 선택해야 합니다.');
+        return;
+    }
+
     const meta = currentUser.user_metadata || {};
     const userName = meta.display_name || meta.full_name || meta.name || currentUser.email.split('@')[0];
 
     const data = {
         title: title,
         amount: amount,
-        payer_id: currentUser.id
+        payer_id: currentUser.id,
+        participant_ids: participantIds
     };
 
     if (id) {

@@ -314,6 +314,11 @@
                 <label style="color:#e3f2fd; font-size:0.9rem;" for="form-expense-amount">금액 (원)</label>
                 <input type="number" id="form-expense-amount" placeholder="예: 300000" min="0" required>
 
+                <label style="color:#e3f2fd; font-size:0.9rem; margin-top:1rem; display:block;">정산 대상 (기본값: 전체 선택)</label>
+                <div id="form-expense-participants-container" style="display:flex; flex-wrap:wrap; gap:0.6rem; background:rgba(0,0,0,0.25); padding:0.8rem; border-radius:6px; border:1px solid rgba(255,255,255,0.1); margin-top:0.3rem; margin-bottom:1rem;">
+                    <!-- Javascript will dynamically inject checkboxes here -->
+                </div>
+
                 <button type="submit" class="btn primary-btn" style="margin-top:1rem;">저장하기</button>
             </form>
         </div>
